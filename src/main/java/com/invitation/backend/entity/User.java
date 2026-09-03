@@ -59,6 +59,14 @@ public class User {
     @Builder.Default
     private Long creditsBalance = 0L;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Long realBalance = 0L; // Tiền nạp thật có thể rút
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long bonusBalance = 0L; // Tiền thưởng khuyến mãi (chỉ dùng mua thiệp)
+
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private User2FA twoFactorAuth;
 

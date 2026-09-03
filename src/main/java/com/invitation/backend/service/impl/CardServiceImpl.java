@@ -9,10 +9,13 @@ import com.invitation.backend.dto.response.WishResponse;
 import com.invitation.backend.entity.Card;
 import com.invitation.backend.entity.CardWish;
 import com.invitation.backend.entity.Template;
+import com.invitation.backend.entity.Transaction;
 import com.invitation.backend.entity.User;
 import com.invitation.backend.repository.CardRepository;
 import com.invitation.backend.repository.CardWishRepository;
 import com.invitation.backend.repository.TemplateRepository;
+import com.invitation.backend.repository.TransactionRepository;
+import com.invitation.backend.repository.UserRepository;
 import com.invitation.backend.service.CardService;
 import com.invitation.backend.service.QrCodeGeneratorService;
 import com.invitation.backend.service.TemplateService;
@@ -24,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.HtmlUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -38,6 +42,8 @@ public class CardServiceImpl implements CardService {
     private final TemplateService templateService;
     private final QrCodeGeneratorService qrCodeGeneratorService;
     private final PasswordEncoder passwordEncoder;
+    private final UserRepository userRepository;
+    private final TransactionRepository transactionRepository;
 
     @Value("${app.client.url:http://localhost:5173}")
     private String clientUrl;
@@ -47,6 +53,42 @@ public class CardServiceImpl implements CardService {
     public CardResponse createCard(User user, CardCreateRequest request) {
         Template template = templateRepository.findById(request.getTemplateId())
                 .orElseThrow(() -> new IllegalArgumentException("Template not found"));
+
+        // Deduct credits if paid template
+        if (!Boolean.TRUE.equals(template.getIsFree()) && template.getPrice() != null && template.getPrice() > 0) {
+            long price = template.getPrice();
+            User freshUser = userRepository.findById(user.getId())
+                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            long totalCredits = freshUser.getCreditsBalance() != null ? freshUser.getCreditsBalance() : 0L;
+
+            if (totalCredits < price) {
+                throw new IllegalArgumentException(String.format(
+                        "INSUFFICIENT_CREDITS: Số dư ví không đủ để xuất bản mẫu thiệp này (Hiện có: %d đ, Giá mẫu: %d đ). Vui lòng nạp thêm tiền!",
+                        totalCredits, price
+                ));
+            }
+
+            // Deduct priority: bonusBalance first, then realBalance
+            long bonus = freshUser.getBonusBalance() != null ? freshUser.getBonusBalance() : 0L;
+            long bonusDeduct = Math.min(bonus, price);
+            long realDeduct = price - bonusDeduct;
+
+            userRepository.atomicDeductForPurchase(freshUser.getId(), realDeduct, bonusDeduct);
+
+            // Record purchase transaction
+            Transaction purchaseTx = Transaction.builder()
+                    .user(freshUser)
+                    .orderCode("BUY" + System.currentTimeMillis())
+                    .paymentMethod("WALLET")
+                    .amount(price)
+                    .type("CARD_PURCHASE")
+                    .status(Transaction.Status.SUCCESS)
+                    .gatewayPayload(String.format("{\"template\": \"%s\", \"realDeduct\": %d, \"bonusDeduct\": %d}",
+                            template.getTitle(), realDeduct, bonusDeduct))
+                    .completedAt(LocalDateTime.now())
+                    .build();
+            transactionRepository.save(purchaseTx);
+        }
 
         String slug = request.getSlug();
         if (slug == null || slug.trim().isEmpty() || cardRepository.existsBySlug(slug.trim())) {

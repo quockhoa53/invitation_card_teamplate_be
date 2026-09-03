@@ -18,6 +18,10 @@ public class TransactionDto {
     private String orderCode;
     private String paymentMethod;
     private Long amount;
+    private Long bonusAmount;
+    private Long actualAmount;
+    private Long missingAmount;
+    private String type;
     private String status;
     private String gatewayPayload;
     private LocalDateTime completedAt;
@@ -35,6 +39,10 @@ public class TransactionDto {
                 .orderCode(t.getOrderCode())
                 .paymentMethod(t.getPaymentMethod())
                 .amount(t.getAmount())
+                .bonusAmount(t.getBonusAmount() != null ? t.getBonusAmount() : 0L)
+                .actualAmount(t.getActualAmount())
+                .missingAmount(t.getMissingAmount() != null ? t.getMissingAmount() : 0L)
+                .type(t.getType() != null ? t.getType() : "DEPOSIT")
                 .status(t.getStatus() != null ? t.getStatus().name() : "PENDING")
                 .gatewayPayload(t.getGatewayPayload())
                 .completedAt(t.getCompletedAt())

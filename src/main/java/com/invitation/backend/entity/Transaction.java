@@ -21,7 +21,9 @@ public class Transaction {
         PENDING,
         SUCCESS,
         FAILED,
-        CANCELLED
+        CANCELLED,
+        UNDERPAID,
+        SETTLED_TO_WALLET
     }
 
     @Id
@@ -42,10 +44,23 @@ public class Transaction {
     private String orderCode;
 
     @Column(nullable = false, length = 50)
-    private String paymentMethod; // VIETQR, PAYOS, MOMO
+    private String paymentMethod; // VIETQR, PAYOS, MOMO, WALLET
 
     @Column(nullable = false)
-    private Long amount;
+    private Long amount; // Số tiền nạp yêu cầu
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long bonusAmount = 0L; // Tiền thưởng khuyến mãi (+10k, +30k)
+
+    private Long actualAmount; // Số tiền thực tế nhận từ ngân hàng
+
+    @Builder.Default
+    private Long missingAmount = 0L; // Số tiền còn thiếu nếu chuyển thiếu
+
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private String type = "DEPOSIT"; // DEPOSIT, CARD_PURCHASE, WITHDRAWAL
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

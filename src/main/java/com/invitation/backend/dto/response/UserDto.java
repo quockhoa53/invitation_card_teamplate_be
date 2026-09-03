@@ -25,6 +25,8 @@ public class UserDto {
     private String authProvider;
     private String googleId;
     private Long creditsBalance;
+    private Long realBalance;
+    private Long bonusBalance;
     private LocalDateTime createdAt;
 }
 

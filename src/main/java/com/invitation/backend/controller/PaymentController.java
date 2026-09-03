@@ -128,12 +128,32 @@ public class PaymentController {
         if (userDetails != null && !userDetails.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_SUPER_ADMIN"))) {
             if (!transaction.getUser().getId().equals(userDetails.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(ApiResponse.error("Báº¡n khÃ´ng cÃ³ quyá»n thao tÃ¡c trÃªn Ä‘Æ¡n hÃ ng nÃ y"));
+                        .body(ApiResponse.error("Báº¡n khÃ´ng cÃ³ quyá» n thao tÃ¡c trÃªn Ä‘Æ¡n hÃ ng nÃ y"));
             }
         }
 
         boolean success = paymentService.cancelTransaction(orderCode);
-        return ResponseEntity.ok(ApiResponse.ok("ÄÃ£ há»§y Ä‘Æ¡n náº¡p tiá»n thÃ nh cÃ´ng", success));
+        return ResponseEntity.ok(ApiResponse.ok("Đã hủy đơn nạp tiền thành công", success));
+    }
+
+    @PostMapping("/orders/{orderCode}/settle-to-wallet")
+    public ResponseEntity<ApiResponse<PaymentOrderResponse>> settleUnderpaidToWallet(
+            @PathVariable String orderCode,
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        PaymentOrderResponse response = paymentService.settleUnderpaidToWallet(orderCode, user);
+        return ResponseEntity.ok(ApiResponse.ok("Đã nạp số tiền chuyển thiếu vào ví thành công", response));
+    }
+
+    @GetMapping("/orders/{orderCode}/supplement-order")
+    public ResponseEntity<ApiResponse<PaymentOrderResponse>> getSupplementOrder(
+            @PathVariable String orderCode,
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        PaymentOrderResponse response = paymentService.getSupplementOrderDetails(orderCode, user);
+        return ResponseEntity.ok(ApiResponse.ok("Thông tin nạp bổ sung phần còn thiếu", response));
     }
 
     /**

@@ -22,6 +22,9 @@ public class PaymentOrderResponse {
     private String accountHolder;
     private String transferContent;
     private String status;
+    private Long bonusAmount;
+    private Long actualAmount;
+    private Long missingAmount;
     private LocalDateTime createdAt;
 }
 

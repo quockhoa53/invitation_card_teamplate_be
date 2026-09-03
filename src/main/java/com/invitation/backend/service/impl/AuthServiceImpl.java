@@ -320,6 +320,8 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole())
                 .isActive(user.getIsActive())
                 .creditsBalance(user.getCreditsBalance())
+                .realBalance(user.getRealBalance() != null ? user.getRealBalance() : (user.getCreditsBalance() != null ? user.getCreditsBalance() : 0L))
+                .bonusBalance(user.getBonusBalance() != null ? user.getBonusBalance() : 0L)
                 .is2FAEnabled(is2FAEnabled)
                 .hasPassword(Boolean.TRUE.equals(user.getHasPassword()))
                 .authProvider(user.getAuthProvider())

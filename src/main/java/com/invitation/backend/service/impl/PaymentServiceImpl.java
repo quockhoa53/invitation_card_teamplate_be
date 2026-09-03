@@ -62,6 +62,15 @@ public class PaymentServiceImpl implements PaymentService {
         return webhookToken;
     }
 
+    public long calculateBonus(long amount) {
+        if (amount >= 100000) {
+            return 30000L;
+        } else if (amount >= 50000) {
+            return 10000L;
+        }
+        return 0L;
+    }
+
     @Override
     @Transactional
     public PaymentOrderResponse createPaymentOrder(User user, CreatePaymentRequest request) {
@@ -86,12 +95,16 @@ public class PaymentServiceImpl implements PaymentService {
             }
         } while (transactionRepository.findByOrderCode(orderCode).isPresent());
 
+        long bonusAmount = calculateBonus(request.getAmount());
+
         Transaction transaction = Transaction.builder()
                 .user(user)
                 .card(card)
                 .orderCode(orderCode)
                 .paymentMethod(request.getPaymentMethod() != null ? request.getPaymentMethod() : "VIETQR")
                 .amount(request.getAmount())
+                .bonusAmount(bonusAmount)
+                .type("DEPOSIT")
                 .status(Transaction.Status.PENDING)
                 .build();
 
@@ -99,7 +112,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         String transferContent = orderCode;
         String encodedContent = URLEncoder.encode(transferContent, StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode(accountName, StandardCharsets.UTF_8);
         String vietQrUrl = String.format(
                 "https://qr.sepay.vn/img?bank=%s&acc=%s&amount=%d&des=%s",
                 bankName, accountNo, request.getAmount(), encodedContent
@@ -112,6 +124,7 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentOrderResponse.builder()
                 .orderCode(orderCode)
                 .amount(request.getAmount())
+                .bonusAmount(bonusAmount)
                 .paymentMethod(transaction.getPaymentMethod())
                 .vietQrUrl(vietQrUrl)
                 .qrCodeBase64(qrCodeBase64)
@@ -130,7 +143,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         String transferContent = transaction.getOrderCode();
         String encodedContent = URLEncoder.encode(transferContent, StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode(accountName, StandardCharsets.UTF_8);
         String vietQrUrl = String.format(
                 "https://qr.sepay.vn/img?bank=%s&acc=%s&amount=%d&des=%s",
                 bankName, accountNo, transaction.getAmount(), encodedContent
@@ -143,6 +155,9 @@ public class PaymentServiceImpl implements PaymentService {
         return PaymentOrderResponse.builder()
                 .orderCode(transaction.getOrderCode())
                 .amount(transaction.getAmount())
+                .bonusAmount(transaction.getBonusAmount())
+                .actualAmount(transaction.getActualAmount())
+                .missingAmount(transaction.getMissingAmount())
                 .paymentMethod(transaction.getPaymentMethod())
                 .vietQrUrl(vietQrUrl)
                 .qrCodeBase64(qrCodeBase64)
@@ -173,28 +188,127 @@ public class PaymentServiceImpl implements PaymentService {
             return true;
         }
 
-        // Validate amount if receivedAmount is provided
-        if (receivedAmount != null && receivedAmount < transaction.getAmount()) {
-            log.warn("Received amount {} is less than order amount {} for order {}", receivedAmount, transaction.getAmount(), orderCode);
+        // Check if this is a supplement payment for an underpaid order
+        long effectiveReceived = receivedAmount != null ? receivedAmount : transaction.getAmount();
+        if (transaction.getStatus() == Transaction.Status.UNDERPAID) {
+            long prevReceived = transaction.getActualAmount() != null ? transaction.getActualAmount() : 0L;
+            effectiveReceived += prevReceived;
+        }
+
+        // Case 1: UNDERPAID (Khách chuyển thiếu)
+        if (effectiveReceived < transaction.getAmount()) {
+            long missing = transaction.getAmount() - effectiveReceived;
+            log.warn("Underpaid detected! Received {} vs required {} for order {}. Missing: {}",
+                    effectiveReceived, transaction.getAmount(), orderCode, missing);
+
+            transaction.setStatus(Transaction.Status.UNDERPAID);
+            transaction.setActualAmount(effectiveReceived);
+            transaction.setMissingAmount(missing);
             transaction.setGatewayPayload(gatewayPayload);
             transactionRepository.save(transaction);
-            throw new IllegalArgumentException(String.format("Số tiền chuyển (%d đ) nhỏ hơn số tiền yêu cầu (%d đ)", receivedAmount, transaction.getAmount()));
+            return false;
         }
 
-        // Atomic DB update to prevent concurrent double crediting race conditions
-        LocalDateTime now = LocalDateTime.now();
-        int rowsUpdated = transactionRepository.atomicMarkSuccess(orderCode, Transaction.Status.SUCCESS, now, gatewayPayload);
-        if (rowsUpdated == 0) {
-            log.info("Concurrent webhook detected for order {}. Another thread already marked it SUCCESS.", orderCode);
-            return true;
-        }
+        // Case 2 & 3: OVERPAID or EXACT (Khách chuyển dư hoặc chuyển đủ)
+        long finalDepositAmount = effectiveReceived;
+        long bonusAmount = calculateBonus(finalDepositAmount);
 
-        // Atomic user credits increment
-        userRepository.atomicAddCredits(transaction.getUser().getId(), transaction.getAmount());
+        transaction.setAmount(finalDepositAmount);
+        transaction.setActualAmount(finalDepositAmount);
+        transaction.setBonusAmount(bonusAmount);
+        transaction.setMissingAmount(0L);
+        transaction.setStatus(Transaction.Status.SUCCESS);
+        transaction.setCompletedAt(LocalDateTime.now());
+        transaction.setGatewayPayload(gatewayPayload);
+        transactionRepository.save(transaction);
 
-        log.info("Successfully confirmed order {} and atomically credited {} VND to user ID {}",
-                orderCode, transaction.getAmount(), transaction.getUser().getId());
+        // Atomically credit realBalance and bonusBalance
+        userRepository.atomicAddDepositWithBonus(transaction.getUser().getId(), finalDepositAmount, bonusAmount);
+
+        log.info("Successfully confirmed order {} and atomically credited {} VND real + {} VND bonus to user ID {}",
+                orderCode, finalDepositAmount, bonusAmount, transaction.getUser().getId());
         return true;
+    }
+
+    @Override
+    @Transactional
+    public PaymentOrderResponse settleUnderpaidToWallet(String orderCode, User user) {
+        Transaction transaction = transactionRepository.findByOrderCode(orderCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn nạp tiền: " + orderCode));
+
+        if (!transaction.getUser().getId().equals(user.getId()) && !user.getRole().name().contains("ADMIN")) {
+            throw new IllegalArgumentException("Bạn không có quyền thao tác trên đơn hàng này");
+        }
+
+        if (transaction.getStatus() != Transaction.Status.UNDERPAID) {
+            throw new IllegalStateException("Đơn hàng không ở trạng thái chuyển thiếu");
+        }
+
+        long actualAmount = transaction.getActualAmount() != null ? transaction.getActualAmount() : 0L;
+        if (actualAmount <= 0) {
+            throw new IllegalStateException("Chưa ghi nhận số tiền chuyển của đơn hàng này");
+        }
+
+        // Credit actualAmount directly to user's realBalance (0 bonus because underpaid)
+        userRepository.atomicAddDepositWithBonus(transaction.getUser().getId(), actualAmount, 0L);
+
+        transaction.setStatus(Transaction.Status.SETTLED_TO_WALLET);
+        transaction.setCompletedAt(LocalDateTime.now());
+        transaction.setGatewayPayload((transaction.getGatewayPayload() != null ? transaction.getGatewayPayload() : "") +
+                " | Settled to wallet: " + actualAmount + " VND at " + LocalDateTime.now());
+        transactionRepository.save(transaction);
+
+        log.info("Settled underpaid order {} of {} VND to wallet for user {}",
+                orderCode, actualAmount, transaction.getUser().getEmail());
+
+        return getPaymentOrderDetails(orderCode);
+    }
+
+    @Override
+    public PaymentOrderResponse getSupplementOrderDetails(String orderCode, User user) {
+        Transaction transaction = transactionRepository.findByOrderCode(orderCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đơn nạp tiền: " + orderCode));
+
+        if (!transaction.getUser().getId().equals(user.getId()) && !user.getRole().name().contains("ADMIN")) {
+            throw new IllegalArgumentException("Bạn không có quyền thao tác trên đơn hàng này");
+        }
+
+        if (transaction.getStatus() != Transaction.Status.UNDERPAID) {
+            throw new IllegalStateException("Đơn hàng không ở trạng thái chuyển thiếu");
+        }
+
+        long missing = transaction.getMissingAmount() != null ? transaction.getMissingAmount() : 0L;
+        if (missing <= 0) {
+            throw new IllegalStateException("Đơn hàng này không còn số tiền thiếu cần nạp");
+        }
+
+        String transferContent = orderCode; // Use same base orderCode so VietQR auto matches
+        String encodedContent = URLEncoder.encode(transferContent, StandardCharsets.UTF_8);
+        String vietQrUrl = String.format(
+                "https://qr.sepay.vn/img?bank=%s&acc=%s&amount=%d&des=%s",
+                bankName, accountNo, missing, encodedContent
+        );
+
+        String qrContent = String.format("2|99|%s|%s|%s|0|0|%d|%s|transfer_myqr",
+                accountNo, accountName, bankId, missing, transferContent);
+        String qrCodeBase64 = qrCodeGeneratorService.generateQrCodeBase64(qrContent, 280, 280);
+
+        return PaymentOrderResponse.builder()
+                .orderCode(transaction.getOrderCode())
+                .amount(missing) // The missing amount to pay
+                .actualAmount(transaction.getActualAmount())
+                .missingAmount(missing)
+                .bonusAmount(transaction.getBonusAmount())
+                .paymentMethod(transaction.getPaymentMethod())
+                .vietQrUrl(vietQrUrl)
+                .qrCodeBase64(qrCodeBase64)
+                .bankName(bankName)
+                .bankAccountNo(accountNo)
+                .accountHolder(accountName)
+                .transferContent(transferContent)
+                .status(transaction.getStatus().name())
+                .createdAt(transaction.getCreatedAt())
+                .build();
     }
 
     @Override
@@ -207,10 +321,14 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalStateException("Giao dịch này đã được duyệt thành công trước đó.");
         }
 
+        long amountToApprove = transaction.getActualAmount() != null && transaction.getActualAmount() > 0
+                ? transaction.getActualAmount()
+                : transaction.getAmount();
+
         String note = String.format("{\"manualApproval\": true, \"admin\": \"%s\", \"approvedAt\": \"%s\"}",
                 adminUser.getEmail(), LocalDateTime.now());
 
-        return confirmPayment(orderCode, transaction.getAmount(), note);
+        return confirmPayment(orderCode, amountToApprove, note);
     }
 
     @Override
