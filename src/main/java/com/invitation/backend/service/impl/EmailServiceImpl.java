@@ -20,6 +20,9 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.brevo.api-key:${BREVO_API_KEY:}}")
     private String brevoApiKey;
 
+    @Value("${app.brevo.sender-email:${BREVO_SENDER_EMAIL:nguyenquockhoa5549@gmail.com}}")
+    private String brevoSenderEmail;
+
     @Value("${app.resend.api-key:${RESEND_API_KEY:}}")
     private String resendApiKey;
 
@@ -106,7 +109,7 @@ public class EmailServiceImpl implements EmailService {
         String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
 
         java.util.Map<String, Object> payload = java.util.Map.of(
-                "sender", java.util.Map.of("name", "KD Card Security", "email", "nguyenquockhoa5549@gmail.com"),
+                "sender", java.util.Map.of("name", "KD Card Security", "email", brevoSenderEmail != null ? brevoSenderEmail : "nguyenquockhoa5549@gmail.com"),
                 "to", java.util.List.of(java.util.Map.of("email", toEmail)),
                 "subject", subject,
                 "htmlContent", htmlContent
