@@ -24,7 +24,7 @@ spring:
       max-request-size: 25MB
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:465}
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:nguyenquockhoa5549@gmail.com}
     password: ${MAIL_PASSWORD:jhtvliparkbpiwzb}
     properties:
@@ -33,12 +33,10 @@ spring:
           auth: true
           starttls:
             enable: true
-            required: false
-          ssl:
-            enable: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+            required: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
 
 app:
   jwt:

@@ -23,23 +23,24 @@ public class EmailServiceImpl implements EmailService {
     public void sendOtpEmail(String toEmail, String otpCode, String purpose) {
         log.info("📧 [OTP DISPATCH] Destination: {}, Purpose: {}, OTP Code: {}", toEmail, purpose, otpCode);
 
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                MimeMessage message = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom(fromEmail, "KD Card Security");
-            helper.setTo(toEmail);
-            helper.setSubject("🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)");
+                helper.setFrom(fromEmail, "KD Card Security");
+                helper.setTo(toEmail);
+                helper.setSubject("🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)");
 
-            String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
-            helper.setText(htmlContent, true);
+                String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
+                helper.setText(htmlContent, true);
 
-            mailSender.send(message);
-            log.info("✅ Email OTP đã được gửi thành công đến {}", toEmail);
-        } catch (Exception e) {
-            log.error("❌ Lỗi khi gửi email qua Gmail SMTP đến {}: {}", toEmail, e.getMessage());
-            // We do not throw an exception here so the user can still use the logged OTP in emergency
-        }
+                mailSender.send(message);
+                log.info("✅ Email OTP đã được gửi thành công đến {}", toEmail);
+            } catch (Exception e) {
+                log.error("❌ Lỗi khi gửi email qua Gmail SMTP đến {}: {}", toEmail, e.getMessage());
+            }
+        });
     }
 
     private String buildOtpHtmlTemplate(String otpCode, String purpose) {
