@@ -23,10 +23,10 @@ spring:
       max-file-size: 20MB
       max-request-size: 25MB
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
+    host: ${MAIL_HOST:smtp-relay.brevo.com}
     port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:nguyenquockhoa5549@gmail.com}
-    password: ${MAIL_PASSWORD:jhtvliparkbpiwzb}
+    username: ${MAIL_USERNAME:b7b019001@smtp-brevo.com}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -39,6 +39,8 @@ spring:
           writetimeout: 10000
 
 app:
+  brevo:
+    api-key: ${BREVO_API_KEY:}
   resend:
     api-key: ${RESEND_API_KEY:}
     from-email: ${RESEND_FROM_EMAIL:KD Card <onboarding@resend.dev>}
