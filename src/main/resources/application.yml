@@ -1,0 +1,48 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: invitation-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/invitation_card_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 hours
+    stage1-expiration-ms: 300000 # 5 minutes for 2FA pending
+  security:
+    aes-secret: ${AES_SECRET:MySuperSecretKeyFor2FAEnc123456} # 32 chars for AES-256
+  vietqr:
+    bank-id: ${VIETQR_BANK_ID:970432} # VPBank BIN Code (Napas 247)
+    bank-name: ${VIETQR_BANK_NAME:VPBank}
+    account-no: ${VIETQR_ACCOUNT_NO:661483903}
+    account-name: ${VIETQR_ACCOUNT_NAME:NGUYEN QUOC KHOA}
+  payment:
+    sandbox: ${PAYMENT_SANDBOX:false} # Set true for local testing, false for production
+    webhook-token: ${PAYMENT_WEBHOOK_TOKEN:sepay_secret_invitation_2026}
+  client:
+    url: ${CLIENT_URL:http://localhost:5173}
+  server:
+    public-url: ${APP_SERVER_PUBLIC_URL:http://localhost:8080}
+  uptime:
+    keep-alive:
+      enabled: ${UPTIME_KEEP_ALIVE_ENABLED:true}

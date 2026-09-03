@@ -1,0 +1,66 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.3.5'
+	id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.invitation'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	
+	// PostgreSQL
+	runtimeOnly 'org.postgresql:postgresql'
+	
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	
+	// JWT Authentication (jjwt 0.12.6)
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+	
+	// Google Authenticator 2FA (TOTP)
+	implementation 'com.warrenstrange:googleauth:1.5.0'
+	
+	// ZXing QR Code Generation
+	implementation 'com.google.zxing:core:3.5.3'
+	implementation 'com.google.zxing:javase:3.5.3'
+	
+	// Bucket4j Rate Limiting
+	implementation 'com.bucket4j:bucket4j-core:8.10.1'
+	
+	// Commons & JSON utilities
+	implementation 'org.apache.commons:commons-lang3:3.14.0'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+	// Test dependencies
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.security:spring-security-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
