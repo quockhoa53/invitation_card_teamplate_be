@@ -39,6 +39,9 @@ spring:
           writetimeout: 10000
 
 app:
+  resend:
+    api-key: ${RESEND_API_KEY:}
+    from-email: ${RESEND_FROM_EMAIL:KD Card <onboarding@resend.dev>}
   jwt:
     secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 hours

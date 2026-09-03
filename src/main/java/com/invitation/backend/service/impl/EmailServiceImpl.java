@@ -14,9 +14,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class EmailServiceImpl implements EmailService {
 
-    private final JavaMailSender mailSender;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:nguyenquockhoa5549@gmail.com}")
+    @Value("${app.resend.api-key:${RESEND_API_KEY:}}")
+    private String resendApiKey;
+
+    @Value("${app.resend.from-email:KD Card <onboarding@resend.dev>}")
     private String fromEmail;
 
     @Override
@@ -24,23 +28,66 @@ public class EmailServiceImpl implements EmailService {
         log.info("📧 [OTP DISPATCH] Destination: {}, Purpose: {}, OTP Code: {}", toEmail, purpose, otpCode);
 
         java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                MimeMessage message = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            boolean sent = false;
 
-                helper.setFrom(fromEmail, "KD Card Security");
-                helper.setTo(toEmail);
-                helper.setSubject("🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)");
+            // 1. Try Resend HTTP API (Port 443 HTTPS - Works 100% on Render without port blocking)
+            if (resendApiKey != null && !resendApiKey.isBlank()) {
+                try {
+                    sendViaResend(toEmail, otpCode, purpose);
+                    sent = true;
+                } catch (Exception e) {
+                    log.warn("⚠️ Gửi qua Resend API chưa thành công (Domain chưa verify cho người nhận ngoài hoặc lỗi): {}", e.getMessage());
+                }
+            }
 
-                String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
-                helper.setText(htmlContent, true);
+            // 2. Fallback to JavaMailSender if Resend did not send
+            if (!sent && mailSender != null) {
+                try {
+                    MimeMessage message = mailSender.createMimeMessage();
+                    MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-                mailSender.send(message);
-                log.info("✅ Email OTP đã được gửi thành công đến {}", toEmail);
-            } catch (Exception e) {
-                log.error("❌ Lỗi khi gửi email qua Gmail SMTP đến {}: {}", toEmail, e.getMessage());
+                    helper.setFrom("nguyenquockhoa5549@gmail.com", "KD Card Security");
+                    helper.setTo(toEmail);
+                    helper.setSubject("🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)");
+
+                    String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
+                    helper.setText(htmlContent, true);
+
+                    mailSender.send(message);
+                    log.info("✅ Email OTP đã được gửi thành công qua Gmail SMTP đến {}", toEmail);
+                    sent = true;
+                } catch (Exception e) {
+                    log.error("❌ Lỗi khi gửi email qua Gmail SMTP đến {}: {}", toEmail, e.getMessage());
+                }
             }
         });
+    }
+
+    private void sendViaResend(String toEmail, String otpCode, String purpose) {
+        org.springframework.web.client.RestClient restClient = org.springframework.web.client.RestClient.builder()
+                .baseUrl("https://api.resend.com")
+                .defaultHeader("Authorization", "Bearer " + resendApiKey.trim())
+                .defaultHeader("Content-Type", org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+                .build();
+
+        String subject = "🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)";
+        String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
+
+        java.util.Map<String, Object> payload = java.util.Map.of(
+                "from", fromEmail,
+                "to", java.util.List.of(toEmail),
+                "subject", subject,
+                "html", htmlContent
+        );
+
+        String response = restClient.post()
+                .uri("/emails")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve()
+                .body(String.class);
+
+        log.info("✅ Resend API đã gửi mail thành công đến {}: {}", toEmail, response);
     }
 
     private String buildOtpHtmlTemplate(String otpCode, String purpose) {
