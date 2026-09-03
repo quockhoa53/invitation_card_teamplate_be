@@ -1,21 +1,21 @@
 package com.invitation.backend.service.impl;
 
 import com.invitation.backend.service.EmailService;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailServiceImpl implements EmailService {
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private JavaMailSender mailSender;
 
     @Value("${app.brevo.api-key:${BREVO_API_KEY:}}")
     private String brevoApiKey;
@@ -23,136 +23,50 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.brevo.sender-email:${BREVO_SENDER_EMAIL:nguyenquockhoa5549@gmail.com}}")
     private String brevoSenderEmail;
 
-    @Value("${app.resend.api-key:${RESEND_API_KEY:}}")
-    private String resendApiKey;
-
-    @Value("${app.resend.from-email:KD Card <onboarding@resend.dev>}")
-    private String fromEmail;
-
-    @Value("${app.resend.test-fallback-email:${NOTIFY_EMAIL:nguyenquockhoa5549@gmail.com}}")
-    private String fallbackEmail;
-
     @Override
     public void sendOtpEmail(String toEmail, String otpCode, String purpose) {
         log.info("📧 [OTP DISPATCH] Destination: {}, Purpose: {}, OTP Code: {}", toEmail, purpose, otpCode);
 
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            boolean sent = false;
-
-            // 1. Try Brevo REST API (HTTPS 443) if API Key is configured
-            if (brevoApiKey != null && !brevoApiKey.isBlank()) {
-                try {
-                    sendViaBrevoApi(toEmail, otpCode, purpose);
-                    sent = true;
-                } catch (Exception e) {
-                    log.warn("⚠️ Gửi qua Brevo REST API chưa thành công: {}", e.getMessage());
-                }
+        CompletableFuture.runAsync(() -> {
+            if (brevoApiKey == null || brevoApiKey.isBlank()) {
+                log.warn("⚠️ Chưa cấu hình BREVO_API_KEY. Mã OTP hiển thị tại console: {}", otpCode);
+                return;
             }
 
-            // 2. Try Brevo SMTP / JavaMailSender (smtp-relay.brevo.com:587)
-            if (!sent && mailSender != null) {
-                try {
-                    MimeMessage message = mailSender.createMimeMessage();
-                    MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-                    helper.setFrom("nguyenquockhoa5549@gmail.com", "KD Card Security");
-                    helper.setTo(toEmail);
-                    helper.setSubject("🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)");
-
-                    String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
-                    helper.setText(htmlContent, true);
-
-                    mailSender.send(message);
-                    log.info("✅ Email OTP đã được gửi thành công qua Brevo SMTP đến {}", toEmail);
-                    sent = true;
-                } catch (Exception e) {
-                    log.warn("⚠️ Gửi qua SMTP đến {} thất bại (Có thể cổng 587 bị Render chặn): {}", toEmail, e.getMessage());
-                }
-            }
-
-            // 3. Try Resend HTTP API (Port 443 HTTPS)
-            if (!sent && resendApiKey != null && !resendApiKey.isBlank()) {
-                try {
-                    sendViaResend(toEmail, otpCode, purpose, null);
-                    sent = true;
-                } catch (Exception e) {
-                    log.warn("⚠️ Gửi qua Resend đến {} chưa thành công: {}", toEmail, e.getMessage());
-
-                    // Sandbox Fallback
-                    if (fallbackEmail != null && !fallbackEmail.isBlank() && !fallbackEmail.equalsIgnoreCase(toEmail)) {
-                        try {
-                            log.info("🔄 [SANDBOX FORWARD] Gửi mã OTP về Gmail chính chủ {} cho tài khoản {}", fallbackEmail, toEmail);
-                            sendViaResend(fallbackEmail, otpCode, purpose, toEmail);
-                            sent = true;
-                        } catch (Exception ex) {
-                            log.error("❌ Sandbox forward cũng thất bại: {}", ex.getMessage());
-                        }
-                    }
-                }
-            }
-
-            if (!sent) {
-                log.error("❌ Không thể gửi email qua các kênh. Mã OTP dùng khẩn cấp để đăng nhập: {}", otpCode);
+            try {
+                sendViaBrevoApi(toEmail, otpCode, purpose);
+            } catch (Exception e) {
+                log.error("❌ Lỗi khi gửi email qua Brevo API đến {}: {}", toEmail, e.getMessage());
             }
         });
     }
 
     private void sendViaBrevoApi(String toEmail, String otpCode, String purpose) {
-        org.springframework.web.client.RestClient restClient = org.springframework.web.client.RestClient.builder()
+        RestClient restClient = RestClient.builder()
                 .baseUrl("https://api.brevo.com/v3")
                 .defaultHeader("api-key", brevoApiKey.trim())
-                .defaultHeader("Content-Type", org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader("Accept", org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
         String subject = "🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)";
         String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
 
-        java.util.Map<String, Object> payload = java.util.Map.of(
-                "sender", java.util.Map.of("name", "KD Card Security", "email", brevoSenderEmail != null ? brevoSenderEmail : "nguyenquockhoa5549@gmail.com"),
-                "to", java.util.List.of(java.util.Map.of("email", toEmail)),
+        Map<String, Object> payload = Map.of(
+                "sender", Map.of("name", "KD Card Security", "email", brevoSenderEmail != null && !brevoSenderEmail.isBlank() ? brevoSenderEmail : "nguyenquockhoa5549@gmail.com"),
+                "to", List.of(Map.of("email", toEmail)),
                 "subject", subject,
                 "htmlContent", htmlContent
         );
 
         String response = restClient.post()
                 .uri("/smtp/email")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)
                 .retrieve()
                 .body(String.class);
 
         log.info("✅ Brevo REST API đã gửi mail thành công đến {}: {}", toEmail, response);
-    }
-
-    private void sendViaResend(String toEmail, String otpCode, String purpose, String originalAccount) {
-        org.springframework.web.client.RestClient restClient = org.springframework.web.client.RestClient.builder()
-                .baseUrl("https://api.resend.com")
-                .defaultHeader("Authorization", "Bearer " + resendApiKey.trim())
-                .defaultHeader("Content-Type", org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
-                .build();
-
-        String subject = originalAccount == null
-                ? "🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)"
-                : "🔒 [" + otpCode + "] [TEST] Mã OTP Cho Tài Khoản: " + originalAccount;
-
-        String htmlContent = buildOtpHtmlTemplate(otpCode, originalAccount == null ? purpose : purpose + " (Tài khoản: " + originalAccount + ")");
-
-        java.util.Map<String, Object> payload = java.util.Map.of(
-                "from", fromEmail,
-                "to", java.util.List.of(toEmail),
-                "subject", subject,
-                "html", htmlContent
-        );
-
-        String response = restClient.post()
-                .uri("/emails")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .body(String.class);
-
-        log.info("✅ Resend API đã gửi mail thành công đến {}: {}", toEmail, response);
     }
 
     private String buildOtpHtmlTemplate(String otpCode, String purpose) {
