@@ -245,20 +245,24 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public Setup2FAResponse setup2FA(User user) {
-        // Send email OTP so user can confirm easily via Email
-        sendEmailOtpForSetup(user);
-
-        GoogleAuthenticatorKey credentials = totpService.createCredentials();
-        String secretKey = credentials.getKey();
-        String encrypted = aesEncryptionUtil.encrypt(secretKey);
-
         User2FA user2FA = user2FARepository.findByUser(user).orElseGet(() -> User2FA.builder()
                 .user(user)
                 .isEnabled(false)
                 .build());
 
+        GoogleAuthenticatorKey credentials = totpService.createCredentials();
+        String secretKey = credentials.getKey();
+        String encrypted = aesEncryptionUtil.encrypt(secretKey);
         user2FA.setEncryptedSecretKey(encrypted);
+
+        // Generate and save Email OTP
+        String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+        user2FA.setEmailOtpCode(otp);
+        user2FA.setEmailOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
         user2FARepository.save(user2FA);
+
+        // Dispatch Email OTP to user's Gmail
+        emailService.sendOtpEmail(user.getEmail(), otp, "Kích hoạt bảo mật 2 bước (2FA) qua Email");
 
         String otpAuthUrl = totpService.getOtpAuthUrl(appName, user.getEmail(), credentials);
         String qrCodeBase64 = qrCodeGeneratorService.generateQrCodeBase64(otpAuthUrl, 250, 250);
@@ -287,7 +291,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // 2. Fallback to TOTP
-        if (!isValid && user2FA.getEncryptedSecretKey() != null) {
+        if (!isValid && user2FA.getEncryptedSecretKey() != null && !user2FA.getEncryptedSecretKey().isBlank()) {
             try {
                 String rawSecret = aesEncryptionUtil.decrypt(user2FA.getEncryptedSecretKey());
                 int code = Integer.parseInt(codeStr.trim());
@@ -313,10 +317,20 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void sendEmailOtpForSetup(User user) {
-        User2FA user2FA = user2FARepository.findByUser(user).orElseGet(() -> User2FA.builder()
-                .user(user)
-                .isEnabled(false)
-                .build());
+        User2FA user2FA = user2FARepository.findByUser(user).orElseGet(() -> {
+            GoogleAuthenticatorKey credentials = totpService.createCredentials();
+            String encrypted = aesEncryptionUtil.encrypt(credentials.getKey());
+            return User2FA.builder()
+                    .user(user)
+                    .encryptedSecretKey(encrypted)
+                    .isEnabled(false)
+                    .build();
+        });
+
+        if (user2FA.getEncryptedSecretKey() == null || user2FA.getEncryptedSecretKey().isBlank()) {
+            GoogleAuthenticatorKey credentials = totpService.createCredentials();
+            user2FA.setEncryptedSecretKey(aesEncryptionUtil.encrypt(credentials.getKey()));
+        }
 
         String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
         user2FA.setEmailOtpCode(otp);

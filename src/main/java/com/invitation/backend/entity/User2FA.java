@@ -27,9 +27,10 @@ public class User2FA {
     @JsonIgnore
     private User user;
 
-    @Column(nullable = true, columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT")
+    @Builder.Default
     @JsonIgnore
-    private String encryptedSecretKey;
+    private String encryptedSecretKey = "";
 
     @Column(nullable = false)
     @Builder.Default
