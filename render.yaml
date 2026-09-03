@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: invitation-backend
+    runtime: java
+    plan: free
+    region: singapore
+    buildCommand: ./gradlew build -x test
+    startCommand: java -jar build/libs/backend-0.0.1-SNAPSHOT.jar
+    autoDeploy: true
+    envVars:
+      - key: SERVER_PORT
+        value: 8080
+      - key: UPTIME_KEEP_ALIVE_ENABLED
+        value: true
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: AES_SECRET
+        sync: false
+      - key: VIETQR_BANK_ID
+        sync: false
+      - key: VIETQR_BANK_NAME
+        sync: false
+      - key: VIETQR_ACCOUNT_NO
+        sync: false
+      - key: VIETQR_ACCOUNT_NAME
+        sync: false
+      - key: PAYMENT_WEBHOOK_TOKEN
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: APP_SERVER_PUBLIC_URL
+        sync: false
