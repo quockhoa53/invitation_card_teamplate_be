@@ -18,4 +18,6 @@ public interface AuthService {
     UserDto setPassword(User user, SetPasswordRequest request);
     UserDto getCurrentUserDto(User user);
     UserDto mapToDto(User user, boolean is2FAEnabled);
+    void sendEmailOtpForSetup(User user);
+    void resendEmailOtp(String tempToken);
 }

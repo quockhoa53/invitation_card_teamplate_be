@@ -27,13 +27,23 @@ public class User2FA {
     @JsonIgnore
     private User user;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(nullable = true, columnDefinition = "TEXT")
     @JsonIgnore
     private String encryptedSecretKey;
 
     @Column(nullable = false)
     @Builder.Default
     private Boolean isEnabled = false;
+
+    @Builder.Default
+    @Column(length = 20)
+    private String twoFactorType = "EMAIL"; // "EMAIL" or "TOTP"
+
+    @Column(length = 10)
+    @JsonIgnore
+    private String emailOtpCode;
+
+    private LocalDateTime emailOtpExpiresAt;
 
     @Column(columnDefinition = "TEXT")
     @JsonIgnore

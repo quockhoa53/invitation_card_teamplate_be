@@ -78,6 +78,25 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("2FA setup initialized", response));
     }
 
+    @PostMapping("/2fa/send-email-otp")
+    public ResponseEntity<ApiResponse<Void>> sendEmailOtpForSetup(
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        authService.sendEmailOtpForSetup(user);
+        return ResponseEntity.ok(ApiResponse.ok("Mã OTP đã được gửi đến email của bạn", null));
+    }
+
+    @PostMapping("/2fa/resend-email-otp")
+    public ResponseEntity<ApiResponse<Void>> resendEmailOtp(@RequestBody Map<String, String> body) {
+        String tempToken = body.get("tempToken");
+        if (tempToken == null || tempToken.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("tempToken is required"));
+        }
+        authService.resendEmailOtp(tempToken);
+        return ResponseEntity.ok(ApiResponse.ok("Mã OTP mới đã được gửi đến email của bạn", null));
+    }
+
     @PostMapping("/2fa/enable")
     public ResponseEntity<ApiResponse<Boolean>> enable2FA(
             @AuthenticationPrincipal UserDetailsImpl userDetails,

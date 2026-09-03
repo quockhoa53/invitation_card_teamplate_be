@@ -39,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
     private final TotpService totpService;
     private final AesEncryptionUtil aesEncryptionUtil;
     private final QrCodeGeneratorService qrCodeGeneratorService;
+    private final com.invitation.backend.service.EmailService emailService;
 
     @Value("${spring.application.name:InvitationCard}")
     private String appName;
@@ -98,6 +99,15 @@ public class AuthServiceImpl implements AuthService {
 
         if (is2FAEnabled || user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_SUPER_ADMIN) {
             if (is2FAEnabled) {
+                // Generate 6-digit OTP and send email
+                String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+                User2FA user2FA = twoFactorOpt.get();
+                user2FA.setEmailOtpCode(otp);
+                user2FA.setEmailOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
+                user2FARepository.save(user2FA);
+
+                emailService.sendOtpEmail(user.getEmail(), otp, "Đăng nhập tài khoản KD Card");
+
                 String tempToken = jwtUtils.generateStage1Token(user);
                 return AuthResponse.builder()
                         .require2FA(true)
@@ -154,6 +164,14 @@ public class AuthServiceImpl implements AuthService {
         boolean is2FAEnabled = twoFactorOpt.map(User2FA::getIsEnabled).orElse(false);
 
         if (is2FAEnabled) {
+            String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+            User2FA user2FA = twoFactorOpt.get();
+            user2FA.setEmailOtpCode(otp);
+            user2FA.setEmailOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
+            user2FARepository.save(user2FA);
+
+            emailService.sendOtpEmail(user.getEmail(), otp, "Đăng nhập tài khoản KD Card qua Google");
+
             String tempToken = jwtUtils.generateStage1Token(user);
             return AuthResponse.builder()
                     .require2FA(true)
@@ -172,6 +190,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public AuthResponse verify2FA(Verify2FARequest request) {
         if (!jwtUtils.isStage1Token(request.getTempToken())) {
             throw new BadCredentialsException("Phiên xác thực 2FA đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.");
@@ -187,16 +206,31 @@ public class AuthServiceImpl implements AuthService {
         User2FA user2FA = user2FARepository.findByUser(user)
                 .orElseThrow(() -> new IllegalStateException("Chưa thiết lập xác thực 2 bước cho tài khoản này"));
 
-        String rawSecret = aesEncryptionUtil.decrypt(user2FA.getEncryptedSecretKey());
-        int code;
-        try {
-            code = Integer.parseInt(request.getCode().trim());
-        } catch (NumberFormatException e) {
-            throw new BadCredentialsException("Mã xác thực 2FA phải là 6 chữ số");
+        boolean isValid = false;
+        // 1. Verify via Email OTP
+        if (user2FA.getEmailOtpCode() != null && user2FA.getEmailOtpExpiresAt() != null) {
+            if (user2FA.getEmailOtpExpiresAt().isAfter(LocalDateTime.now()) &&
+                    request.getCode().trim().equals(user2FA.getEmailOtpCode().trim())) {
+                isValid = true;
+                user2FA.setEmailOtpCode(null);
+                user2FA.setEmailOtpExpiresAt(null);
+                user2FARepository.save(user2FA);
+            }
         }
 
-        if (!totpService.verifyCode(rawSecret, code)) {
-            throw new BadCredentialsException("Mã xác thực 2FA không chính xác");
+        // 2. Fallback to TOTP if encryptedSecretKey is present
+        if (!isValid && user2FA.getEncryptedSecretKey() != null) {
+            try {
+                String rawSecret = aesEncryptionUtil.decrypt(user2FA.getEncryptedSecretKey());
+                int code = Integer.parseInt(request.getCode().trim());
+                if (totpService.verifyCode(rawSecret, code)) {
+                    isValid = true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (!isValid) {
+            throw new BadCredentialsException("Mã xác thực OTP không chính xác hoặc đã hết hạn!");
         }
 
         String token = jwtUtils.generateToken(user);
@@ -211,6 +245,9 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public Setup2FAResponse setup2FA(User user) {
+        // Send email OTP so user can confirm easily via Email
+        sendEmailOtpForSetup(user);
+
         GoogleAuthenticatorKey credentials = totpService.createCredentials();
         String secretKey = credentials.getKey();
         String encrypted = aesEncryptionUtil.encrypt(secretKey);
@@ -239,22 +276,75 @@ public class AuthServiceImpl implements AuthService {
         User2FA user2FA = user2FARepository.findByUser(user)
                 .orElseThrow(() -> new IllegalStateException("Vui lòng khởi tạo thiết lập 2FA trước khi kích hoạt"));
 
-        String rawSecret = aesEncryptionUtil.decrypt(user2FA.getEncryptedSecretKey());
-        int code;
-        try {
-            code = Integer.parseInt(codeStr.trim());
-        } catch (NumberFormatException e) {
-            throw new BadCredentialsException("Mã 2FA phải là 6 chữ số");
+        boolean isValid = false;
+        // 1. Check Email OTP
+        if (user2FA.getEmailOtpCode() != null && user2FA.getEmailOtpExpiresAt() != null) {
+            if (user2FA.getEmailOtpExpiresAt().isAfter(LocalDateTime.now()) &&
+                    codeStr.trim().equals(user2FA.getEmailOtpCode().trim())) {
+                isValid = true;
+                user2FA.setTwoFactorType("EMAIL");
+            }
         }
 
-        if (!totpService.verifyCode(rawSecret, code)) {
-            throw new BadCredentialsException("Mã xác thực không chính xác");
+        // 2. Fallback to TOTP
+        if (!isValid && user2FA.getEncryptedSecretKey() != null) {
+            try {
+                String rawSecret = aesEncryptionUtil.decrypt(user2FA.getEncryptedSecretKey());
+                int code = Integer.parseInt(codeStr.trim());
+                if (totpService.verifyCode(rawSecret, code)) {
+                    isValid = true;
+                    user2FA.setTwoFactorType("TOTP");
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (!isValid) {
+            throw new BadCredentialsException("Mã xác thực OTP không chính xác hoặc đã hết hạn!");
         }
 
         user2FA.setIsEnabled(true);
         user2FA.setEnabledAt(LocalDateTime.now());
+        user2FA.setEmailOtpCode(null);
+        user2FA.setEmailOtpExpiresAt(null);
         user2FARepository.save(user2FA);
         return true;
+    }
+
+    @Override
+    @Transactional
+    public void sendEmailOtpForSetup(User user) {
+        User2FA user2FA = user2FARepository.findByUser(user).orElseGet(() -> User2FA.builder()
+                .user(user)
+                .isEnabled(false)
+                .build());
+
+        String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+        user2FA.setEmailOtpCode(otp);
+        user2FA.setEmailOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
+        user2FARepository.save(user2FA);
+
+        emailService.sendOtpEmail(user.getEmail(), otp, "Kích hoạt bảo mật 2 bước (2FA) qua Email");
+    }
+
+    @Override
+    @Transactional
+    public void resendEmailOtp(String tempToken) {
+        if (!jwtUtils.isStage1Token(tempToken)) {
+            throw new BadCredentialsException("Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại.");
+        }
+        String email = jwtUtils.extractUsername(tempToken);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadCredentialsException("Người dùng không tồn tại"));
+
+        User2FA user2FA = user2FARepository.findByUser(user)
+                .orElseThrow(() -> new IllegalStateException("Chưa thiết lập xác thực 2 bước"));
+
+        String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1000000));
+        user2FA.setEmailOtpCode(otp);
+        user2FA.setEmailOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
+        user2FARepository.save(user2FA);
+
+        emailService.sendOtpEmail(user.getEmail(), otp, "Đăng nhập tài khoản KD Card");
     }
 
     @Override
