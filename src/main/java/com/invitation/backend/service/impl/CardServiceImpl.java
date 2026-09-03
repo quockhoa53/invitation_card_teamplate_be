@@ -44,6 +44,7 @@ public class CardServiceImpl implements CardService {
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
+    private final com.invitation.backend.repository.UserTemplatePurchaseRepository userTemplatePurchaseRepository;
 
     @Value("${app.client.url:http://localhost:5173}")
     private String clientUrl;
@@ -54,40 +55,52 @@ public class CardServiceImpl implements CardService {
         Template template = templateRepository.findById(request.getTemplateId())
                 .orElseThrow(() -> new IllegalArgumentException("Template not found"));
 
-        // Deduct credits if paid template
+        // Deduct credits if paid template and not yet purchased
         if (!Boolean.TRUE.equals(template.getIsFree()) && template.getPrice() != null && template.getPrice() > 0) {
-            long price = template.getPrice();
             User freshUser = userRepository.findById(user.getId())
                     .orElseThrow(() -> new IllegalArgumentException("User not found"));
-            long totalCredits = freshUser.getCreditsBalance() != null ? freshUser.getCreditsBalance() : 0L;
 
-            if (totalCredits < price) {
-                throw new IllegalArgumentException(String.format(
-                        "INSUFFICIENT_CREDITS: Số dư ví không đủ để xuất bản mẫu thiệp này (Hiện có: %d đ, Giá mẫu: %d đ). Vui lòng nạp thêm tiền!",
-                        totalCredits, price
-                ));
+            boolean alreadyPurchased = userTemplatePurchaseRepository.existsByUserAndTemplate(freshUser, template);
+            if (!alreadyPurchased) {
+                long price = template.getPrice();
+                long totalCredits = freshUser.getCreditsBalance() != null ? freshUser.getCreditsBalance() : 0L;
+
+                if (totalCredits < price) {
+                    throw new IllegalArgumentException(String.format(
+                            "INSUFFICIENT_CREDITS: Bạn chưa mua mẫu thiệp này và số dư ví không đủ (Hiện có: %,d đ, Giá mẫu: %,d đ). Vui lòng nạp thêm tiền!",
+                            totalCredits, price
+                    ));
+                }
+
+                // Deduct priority: bonusBalance first, then realBalance
+                long bonus = freshUser.getBonusBalance() != null ? freshUser.getBonusBalance() : 0L;
+                long bonusDeduct = Math.min(bonus, price);
+                long realDeduct = price - bonusDeduct;
+
+                userRepository.atomicDeductForPurchase(freshUser.getId(), realDeduct, bonusDeduct);
+
+                // Save template purchase record
+                com.invitation.backend.entity.UserTemplatePurchase purchase = com.invitation.backend.entity.UserTemplatePurchase.builder()
+                        .user(freshUser)
+                        .template(template)
+                        .pricePaid(price)
+                        .build();
+                userTemplatePurchaseRepository.save(purchase);
+
+                // Record purchase transaction
+                Transaction purchaseTx = Transaction.builder()
+                        .user(freshUser)
+                        .orderCode("BUY" + System.currentTimeMillis())
+                        .paymentMethod("WALLET")
+                        .amount(price)
+                        .type("CARD_PURCHASE")
+                        .status(Transaction.Status.SUCCESS)
+                        .gatewayPayload(String.format("{\"template\": \"%s\", \"realDeduct\": %d, \"bonusDeduct\": %d}",
+                                template.getTitle(), realDeduct, bonusDeduct))
+                        .completedAt(LocalDateTime.now())
+                        .build();
+                transactionRepository.save(purchaseTx);
             }
-
-            // Deduct priority: bonusBalance first, then realBalance
-            long bonus = freshUser.getBonusBalance() != null ? freshUser.getBonusBalance() : 0L;
-            long bonusDeduct = Math.min(bonus, price);
-            long realDeduct = price - bonusDeduct;
-
-            userRepository.atomicDeductForPurchase(freshUser.getId(), realDeduct, bonusDeduct);
-
-            // Record purchase transaction
-            Transaction purchaseTx = Transaction.builder()
-                    .user(freshUser)
-                    .orderCode("BUY" + System.currentTimeMillis())
-                    .paymentMethod("WALLET")
-                    .amount(price)
-                    .type("CARD_PURCHASE")
-                    .status(Transaction.Status.SUCCESS)
-                    .gatewayPayload(String.format("{\"template\": \"%s\", \"realDeduct\": %d, \"bonusDeduct\": %d}",
-                            template.getTitle(), realDeduct, bonusDeduct))
-                    .completedAt(LocalDateTime.now())
-                    .build();
-            transactionRepository.save(purchaseTx);
         }
 
         String slug = request.getSlug();

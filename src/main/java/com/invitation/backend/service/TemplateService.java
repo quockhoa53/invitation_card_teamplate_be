@@ -18,4 +18,6 @@ public interface TemplateService {
     TemplateResponse publishTemplate(UUID id);
     void deleteTemplate(UUID id);
     TemplateResponse mapToResponse(Template template);
+    List<UUID> getPurchasedTemplateIds(com.invitation.backend.entity.User user);
+    boolean purchaseTemplate(com.invitation.backend.entity.User user, UUID templateId);
 }
