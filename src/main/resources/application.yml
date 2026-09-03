@@ -7,9 +7,9 @@ spring:
   application:
     name: invitation-backend
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/invitation_card_db}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:1234}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -18,7 +18,6 @@ spring:
     properties:
       hibernate:
         format_sql: false
-        dialect: org.hibernate.dialect.PostgreSQLDialect
   servlet:
     multipart:
       max-file-size: 20MB
@@ -26,19 +25,21 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 hours
     stage1-expiration-ms: 300000 # 5 minutes for 2FA pending
   security:
-    aes-secret: ${AES_SECRET:MySuperSecretKeyFor2FAEnc123456} # 32 chars for AES-256
+    aes-secret: ${AES_SECRET}
   vietqr:
-    bank-id: ${VIETQR_BANK_ID:970432} # VPBank BIN Code (Napas 247)
-    bank-name: ${VIETQR_BANK_NAME:VPBank}
-    account-no: ${VIETQR_ACCOUNT_NO:661483903}
-    account-name: ${VIETQR_ACCOUNT_NAME:NGUYEN QUOC KHOA}
+    bank-id: ${VIETQR_BANK_ID}
+    bank-name: ${VIETQR_BANK_NAME}
+    account-no: ${VIETQR_ACCOUNT_NO}
+    account-name: ${VIETQR_ACCOUNT_NAME}
   payment:
-    sandbox: ${PAYMENT_SANDBOX:false} # Set true for local testing, false for production
-    webhook-token: ${PAYMENT_WEBHOOK_TOKEN:sepay_secret_invitation_2026}
+    sandbox: ${PAYMENT_SANDBOX:false}
+    webhook:
+      token: ${PAYMENT_WEBHOOK_TOKEN}
+    webhook-token: ${PAYMENT_WEBHOOK_TOKEN}
   client:
     url: ${CLIENT_URL:http://localhost:5173}
   server:
