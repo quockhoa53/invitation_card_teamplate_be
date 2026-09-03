@@ -23,6 +23,9 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.resend.from-email:KD Card <onboarding@resend.dev>}")
     private String fromEmail;
 
+    @Value("${app.resend.test-fallback-email:${NOTIFY_EMAIL:nguyenquockhoa5549@gmail.com}}")
+    private String fallbackEmail;
+
     @Override
     public void sendOtpEmail(String toEmail, String otpCode, String purpose) {
         log.info("📧 [OTP DISPATCH] Destination: {}, Purpose: {}, OTP Code: {}", toEmail, purpose, otpCode);
@@ -33,10 +36,21 @@ public class EmailServiceImpl implements EmailService {
             // 1. Try Resend HTTP API (Port 443 HTTPS - Works 100% on Render without port blocking)
             if (resendApiKey != null && !resendApiKey.isBlank()) {
                 try {
-                    sendViaResend(toEmail, otpCode, purpose);
+                    sendViaResend(toEmail, otpCode, purpose, null);
                     sent = true;
                 } catch (Exception e) {
-                    log.warn("⚠️ Gửi qua Resend API chưa thành công (Domain chưa verify cho người nhận ngoài hoặc lỗi): {}", e.getMessage());
+                    log.warn("⚠️ Gửi qua Resend đến {} chưa thành công (Domain chưa verify người nhận ngoài): {}", toEmail, e.getMessage());
+
+                    // Sandbox Fallback: While testing without verified domain, forward OTP to verified owner email
+                    if (fallbackEmail != null && !fallbackEmail.isBlank() && !fallbackEmail.equalsIgnoreCase(toEmail)) {
+                        try {
+                            log.info("🔄 [SANDBOX FORWARD] Gửi mã OTP về Gmail chính chủ {} để kiểm thử tài khoản {}", fallbackEmail, toEmail);
+                            sendViaResend(fallbackEmail, otpCode, purpose, toEmail);
+                            sent = true;
+                        } catch (Exception ex) {
+                            log.error("❌ Sandbox forward cũng thất bại: {}", ex.getMessage());
+                        }
+                    }
                 }
             }
 
@@ -63,15 +77,18 @@ public class EmailServiceImpl implements EmailService {
         });
     }
 
-    private void sendViaResend(String toEmail, String otpCode, String purpose) {
+    private void sendViaResend(String toEmail, String otpCode, String purpose, String originalAccount) {
         org.springframework.web.client.RestClient restClient = org.springframework.web.client.RestClient.builder()
                 .baseUrl("https://api.resend.com")
                 .defaultHeader("Authorization", "Bearer " + resendApiKey.trim())
                 .defaultHeader("Content-Type", org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
                 .build();
 
-        String subject = "🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)";
-        String htmlContent = buildOtpHtmlTemplate(otpCode, purpose);
+        String subject = originalAccount == null
+                ? "🔒 [" + otpCode + "] Mã Xác Thực Đăng Nhập KD Card (Hạn dùng 5 phút)"
+                : "🔒 [" + otpCode + "] [TEST] Mã OTP Cho Tài Khoản: " + originalAccount;
+
+        String htmlContent = buildOtpHtmlTemplate(otpCode, originalAccount == null ? purpose : purpose + " (Tài khoản: " + originalAccount + ")");
 
         java.util.Map<String, Object> payload = java.util.Map.of(
                 "from", fromEmail,
