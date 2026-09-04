@@ -20,10 +20,19 @@ public interface WithdrawalRepository extends JpaRepository<Withdrawal, UUID> {
 
     Page<Withdrawal> findByStatusOrderByCreatedAtDesc(Withdrawal.Status status, Pageable pageable);
 
-    @Query("SELECT w FROM Withdrawal w JOIN FETCH w.user WHERE (:status IS NULL OR w.status = :status) " +
-           "AND (:search IS NULL OR LOWER(w.accountHolder) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(w.accountNumber) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(w.user.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+    @Query(value = "SELECT w FROM Withdrawal w JOIN FETCH w.user u WHERE " +
+           "(:status IS NULL OR w.status = :status) AND " +
+           "(:search IS NULL OR :search = '' OR " +
+           "LOWER(w.accountHolder) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(w.accountNumber) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))) " +
+           "ORDER BY w.createdAt DESC",
+           countQuery = "SELECT COUNT(w) FROM Withdrawal w JOIN w.user u WHERE " +
+           "(:status IS NULL OR w.status = :status) AND " +
+           "(:search IS NULL OR :search = '' OR " +
+           "LOWER(w.accountHolder) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(w.accountNumber) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))")
     Page<Withdrawal> findAllFiltered(@Param("status") Withdrawal.Status status,
                                      @Param("search") String search,
                                      Pageable pageable);

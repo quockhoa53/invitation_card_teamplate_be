@@ -20,9 +20,17 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
 
     Page<Promotion> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
-    @Query("SELECT p FROM Promotion p WHERE (:search IS NULL OR LOWER(p.code) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:isActive IS NULL OR p.isActive = :isActive) ORDER BY p.createdAt DESC")
+    @Query(value = "SELECT p FROM Promotion p WHERE " +
+           "(:search IS NULL OR :search = '' OR " +
+           "LOWER(p.code) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(p.description) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))) AND " +
+           "(:isActive IS NULL OR p.isActive = :isActive) " +
+           "ORDER BY p.createdAt DESC",
+           countQuery = "SELECT COUNT(p) FROM Promotion p WHERE " +
+           "(:search IS NULL OR :search = '' OR " +
+           "LOWER(p.code) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')) OR " +
+           "LOWER(p.description) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))) AND " +
+           "(:isActive IS NULL OR p.isActive = :isActive)")
     Page<Promotion> findAllFiltered(@Param("search") String search,
                                     @Param("isActive") Boolean isActive,
                                     Pageable pageable);

@@ -96,6 +96,12 @@ public class WithdrawalServiceImpl implements WithdrawalService {
     @Override
     public Page<WithdrawalDto> getAdminWithdrawals(Withdrawal.Status status, String search, Pageable pageable) {
         String keyword = (search != null && !search.isBlank()) ? search.trim() : null;
+        if (status == null && keyword == null) {
+            return withdrawalRepository.findAllByOrderByCreatedAtDesc(pageable).map(WithdrawalDto::fromEntity);
+        }
+        if (status != null && keyword == null) {
+            return withdrawalRepository.findByStatusOrderByCreatedAtDesc(status, pageable).map(WithdrawalDto::fromEntity);
+        }
         return withdrawalRepository.findAllFiltered(status, keyword, pageable).map(WithdrawalDto::fromEntity);
     }
 

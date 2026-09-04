@@ -138,6 +138,9 @@ public class PromotionServiceImpl implements PromotionService {
     @Override
     public Page<PromotionDto> getAdminPromotions(String search, Boolean isActive, Pageable pageable) {
         String keyword = (search != null && !search.isBlank()) ? search.trim() : null;
+        if (keyword == null && isActive == null) {
+            return promotionRepository.findAllByOrderByCreatedAtDesc(pageable).map(PromotionDto::fromEntity);
+        }
         return promotionRepository.findAllFiltered(keyword, isActive, pageable).map(PromotionDto::fromEntity);
     }
 
