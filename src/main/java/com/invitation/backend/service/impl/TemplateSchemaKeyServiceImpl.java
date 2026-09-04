@@ -162,6 +162,34 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
         defaults.add(createKey("keyword4", "Từ Khóa Rơi 4", "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Mãi Mãi", 19));
         defaults.add(createKey("fallingKeywords", "Danh Sách Từ Khóa Rơi", "keywords", "Hiệu Ứng Từ Khóa Rơi", "Danh sách từ khóa", 20));
 
+        // Ngày Sinh Nhật & Đếm Ngược
+        defaults.add(createKey("birthdayDate", "Ngày Sinh Nhật (Tự Tính Đếm Ngược)", "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 21));
+
+        // 5 Khoảnh Khắc Kỷ Niệm (Scrapbook KK1 -> KK5)
+        defaults.add(createKey("moment1Photo", "Ảnh Khoảnh Khắc 1", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 22));
+        defaults.add(createKey("moment1Text", "Nội Dung Khoảnh Khắc 1", "text", "5 Khoảnh Khắc Kỷ Niệm", "Ngày đầu tiên nắm tay nhau", 23));
+        defaults.add(createKey("moment1Date", "Ngày Khoảnh Khắc 1", "text", "5 Khoảnh Khắc Kỷ Niệm", "14.02.2023", 24));
+
+        defaults.add(createKey("moment2Photo", "Ảnh Khoảnh Khắc 2", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 25));
+        defaults.add(createKey("moment2Text", "Nội Dung Khoảnh Khắc 2", "text", "5 Khoảnh Khắc Kỷ Niệm", "Chuyến đi Đà Lạt đầu tiên", 26));
+        defaults.add(createKey("moment2Date", "Ngày Khoảnh Khắc 2", "text", "5 Khoảnh Khắc Kỷ Niệm", "08.05.2023", 27));
+
+        defaults.add(createKey("moment3Photo", "Ảnh Khoảnh Khắc 3", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 28));
+        defaults.add(createKey("moment3Text", "Nội Dung Khoảnh Khắc 3", "text", "5 Khoảnh Khắc Kỷ Niệm", "Sinh nhật năm ngoái", 29));
+        defaults.add(createKey("moment3Date", "Ngày Khoảnh Khắc 3", "text", "5 Khoảnh Khắc Kỷ Niệm", "20.10.2023", 30));
+
+        defaults.add(createKey("moment4Photo", "Ảnh Khoảnh Khắc 4", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 31));
+        defaults.add(createKey("moment4Text", "Nội Dung Khoảnh Khắc 4", "text", "5 Khoảnh Khắc Kỷ Niệm", "Đón năm mới cùng nhau", 32));
+        defaults.add(createKey("moment4Date", "Ngày Khoảnh Khắc 4", "text", "5 Khoảnh Khắc Kỷ Niệm", "01.01.2026", 33));
+
+        defaults.add(createKey("moment5Photo", "Ảnh Khoảnh Khắc 5", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 34));
+        defaults.add(createKey("moment5Text", "Nội Dung Khoảnh Khắc 5", "text", "5 Khoảnh Khắc Kỷ Niệm", "Hành trình dài phía trước", 35));
+        defaults.add(createKey("moment5Date", "Ngày Khoảnh Khắc 5", "text", "5 Khoảnh Khắc Kỷ Niệm", "Mãi Mãi Về Sau", 36));
+
+        // Thư Tay Khi Nhấn Mở Thư
+        defaults.add(createKey("letterMessage", "Nội Dung Thư Tay Khi Mở", "textarea", "Thư Chúc Mừng", "Gửi người thương...", 37));
+        defaults.add(createKey("footerNote", "Dòng Chữ Dưới Chân Trang", "text", "Thông Tin Khác", "made with love, mỗi ngày bên em", 38));
+
         for (TemplateSchemaKey item : defaults) {
             if (!repository.existsByKeyName(item.getKeyName())) {
                 repository.save(item);
