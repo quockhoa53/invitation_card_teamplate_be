@@ -41,7 +41,7 @@ public class AdminServiceImpl implements AdminService {
         long totalCards = cardRepository.count();
         long totalTemplates = templateRepository.count();
         long totalRevenue = transactionRepository.getTotalRevenue() != null ? transactionRepository.getTotalRevenue() : 0L;
-        long totalTransactions = transactionRepository.count();
+        long totalTransactions = transactionRepository.countRevenueTransactions() != null ? transactionRepository.countRevenueTransactions() : 0L;
         long activeTemplates = templateRepository.countByIsActiveTrue();
         long publishedCards = cardRepository.countByIsPublishedTrue();
 
@@ -53,6 +53,7 @@ public class AdminServiceImpl implements AdminService {
                         .userName(t.getUser() != null ? t.getUser().getFullName() : "N/A")
                         .amount(t.getAmount())
                         .paymentMethod(t.getPaymentMethod())
+                        .type(t.getType())
                         .status(t.getStatus().name())
                         .createdAt(t.getCreatedAt() != null ? t.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) : "")
                         .build())

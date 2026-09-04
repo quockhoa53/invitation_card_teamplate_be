@@ -31,6 +31,7 @@ public class AdminStatsResponse {
         private String userName;
         private Long amount;
         private String paymentMethod;
+        private String type;
         private String status;
         private String createdAt;
     }

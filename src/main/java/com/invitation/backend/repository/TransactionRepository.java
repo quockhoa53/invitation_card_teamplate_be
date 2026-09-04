@@ -19,8 +19,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByUserOrderByCreatedAtDesc(User user);
     Page<Transaction> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
     
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'SUCCESS'")
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE t.status = 'SUCCESS' AND t.paymentMethod != 'WALLET' AND (t.type IS NULL OR t.type = 'DEPOSIT')")
     Long getTotalRevenue();
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.status = 'SUCCESS' AND t.paymentMethod != 'WALLET' AND (t.type IS NULL OR t.type = 'DEPOSIT')")
+    Long countRevenueTransactions();
     
     long countByStatus(Transaction.Status status);
 
