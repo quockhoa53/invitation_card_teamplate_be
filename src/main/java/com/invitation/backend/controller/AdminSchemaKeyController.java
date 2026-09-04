@@ -1,7 +1,9 @@
 package com.invitation.backend.controller;
 
 import com.invitation.backend.dto.ApiResponse;
+import com.invitation.backend.dto.request.ImportSchemaKeysRequest;
 import com.invitation.backend.dto.request.TemplateSchemaKeyRequest;
+import com.invitation.backend.dto.response.ImportSchemaKeysResponse;
 import com.invitation.backend.dto.response.TemplateSchemaKeyResponse;
 import com.invitation.backend.service.TemplateSchemaKeyService;
 import jakarta.validation.Valid;
@@ -52,6 +54,15 @@ public class AdminSchemaKeyController {
     public ResponseEntity<ApiResponse<List<TemplateSchemaKeyResponse>>> seedDefaults() {
         List<TemplateSchemaKeyResponse> keys = schemaKeyService.seedDefaultSchemaKeys();
         return ResponseEntity.ok(ApiResponse.ok("Khôi phục danh sách Schema Keys chuẩn thành công", keys));
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<ApiResponse<ImportSchemaKeysResponse>> importSchemaKeys(
+            @Valid @RequestBody ImportSchemaKeysRequest request) {
+        ImportSchemaKeysResponse response = schemaKeyService.importSchemaKeys(request);
+        String message = String.format("Import thành công: %d tạo mới, %d cập nhật, %d bỏ qua",
+                response.getCreatedCount(), response.getUpdatedCount(), response.getSkippedCount());
+        return ResponseEntity.ok(ApiResponse.ok(message, response));
     }
 
     @DeleteMapping("/{id}")

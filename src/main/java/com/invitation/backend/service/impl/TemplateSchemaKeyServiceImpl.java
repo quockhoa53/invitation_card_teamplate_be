@@ -1,6 +1,8 @@
 package com.invitation.backend.service.impl;
 
+import com.invitation.backend.dto.request.ImportSchemaKeysRequest;
 import com.invitation.backend.dto.request.TemplateSchemaKeyRequest;
+import com.invitation.backend.dto.response.ImportSchemaKeysResponse;
 import com.invitation.backend.dto.response.TemplateSchemaKeyResponse;
 import com.invitation.backend.entity.TemplateSchemaKey;
 import com.invitation.backend.repository.TemplateSchemaKeyRepository;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -197,6 +200,80 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
         }
 
         return getAllSchemaKeysForAdmin();
+    }
+
+    @Override
+    @Transactional
+    public ImportSchemaKeysResponse importSchemaKeys(ImportSchemaKeysRequest request) {
+        if (request == null || request.getKeys() == null || request.getKeys().isEmpty()) {
+            throw new IllegalArgumentException("Danh sách keys không được để trống");
+        }
+
+        boolean overwrite = Boolean.TRUE.equals(request.getOverwrite());
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+
+        for (TemplateSchemaKeyRequest req : request.getKeys()) {
+            if (req.getKeyName() == null || req.getKeyName().trim().isEmpty()) {
+                continue;
+            }
+            String keyName = req.getKeyName().trim();
+            Optional<TemplateSchemaKey> existingOpt = repository.findByKeyName(keyName);
+
+            String label = req.getLabel() != null && !req.getLabel().trim().isEmpty()
+                    ? req.getLabel().trim()
+                    : keyName;
+            String fieldType = req.getFieldType() != null && !req.getFieldType().trim().isEmpty()
+                    ? req.getFieldType().trim()
+                    : "text";
+            String sectionName = req.getSectionName() != null && !req.getSectionName().trim().isEmpty()
+                    ? req.getSectionName().trim()
+                    : "Tùy Chỉnh Nội Dung";
+
+            if (existingOpt.isPresent()) {
+                if (overwrite) {
+                    TemplateSchemaKey existing = existingOpt.get();
+                    existing.setLabel(label);
+                    existing.setFieldType(fieldType);
+                    existing.setSectionName(sectionName);
+                    if (req.getPlaceholder() != null) existing.setPlaceholder(req.getPlaceholder());
+                    if (req.getDescription() != null) existing.setDescription(req.getDescription());
+                    if (req.getDefaultValue() != null) existing.setDefaultValue(req.getDefaultValue());
+                    if (req.getIsRequired() != null) existing.setIsRequired(req.getIsRequired());
+                    if (req.getDisplayOrder() != null) existing.setDisplayOrder(req.getDisplayOrder());
+                    if (req.getIsActive() != null) existing.setIsActive(req.getIsActive());
+                    repository.save(existing);
+                    updatedCount++;
+                } else {
+                    skippedCount++;
+                }
+            } else {
+                TemplateSchemaKey newKey = TemplateSchemaKey.builder()
+                        .keyName(keyName)
+                        .label(label)
+                        .fieldType(fieldType)
+                        .sectionName(sectionName)
+                        .placeholder(req.getPlaceholder())
+                        .description(req.getDescription())
+                        .defaultValue(req.getDefaultValue())
+                        .isRequired(req.getIsRequired() != null ? req.getIsRequired() : false)
+                        .displayOrder(req.getDisplayOrder() != null ? req.getDisplayOrder() : 0)
+                        .isActive(req.getIsActive() != null ? req.getIsActive() : true)
+                        .build();
+                repository.save(newKey);
+                createdCount++;
+            }
+        }
+
+        List<TemplateSchemaKeyResponse> allKeys = getAllSchemaKeysForAdmin();
+        return ImportSchemaKeysResponse.builder()
+                .totalSubmitted(request.getKeys().size())
+                .createdCount(createdCount)
+                .updatedCount(updatedCount)
+                .skippedCount(skippedCount)
+                .keys(allKeys)
+                .build();
     }
 
     private TemplateSchemaKey createKey(String keyName, String label, String fieldType, String sectionName, String placeholder, int order) {

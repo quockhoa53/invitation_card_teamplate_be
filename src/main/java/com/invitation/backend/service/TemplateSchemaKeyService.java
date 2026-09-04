@@ -16,5 +16,6 @@ public interface TemplateSchemaKeyService {
     TemplateSchemaKeyResponse toggleSchemaKeyStatus(UUID id);
     void deleteSchemaKey(UUID id);
     List<TemplateSchemaKeyResponse> seedDefaultSchemaKeys();
+    com.invitation.backend.dto.response.ImportSchemaKeysResponse importSchemaKeys(com.invitation.backend.dto.request.ImportSchemaKeysRequest request);
     TemplateSchemaKeyResponse mapToResponse(TemplateSchemaKey entity);
 }
