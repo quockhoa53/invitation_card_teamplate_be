@@ -6,9 +6,11 @@ import com.invitation.backend.dto.response.TransactionDto;
 import com.invitation.backend.entity.Card;
 import com.invitation.backend.entity.Transaction;
 import com.invitation.backend.entity.User;
+import com.invitation.backend.entity.Withdrawal;
 import com.invitation.backend.repository.CardRepository;
 import com.invitation.backend.repository.TransactionRepository;
 import com.invitation.backend.repository.UserRepository;
+import com.invitation.backend.repository.WithdrawalRepository;
 import com.invitation.backend.service.PaymentService;
 import com.invitation.backend.service.QrCodeGeneratorService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final CardRepository cardRepository;
     private final UserRepository userRepository;
     private final QrCodeGeneratorService qrCodeGeneratorService;
+    private final WithdrawalRepository withdrawalRepository;
 
     @Value("${app.vietqr.bank-id}")
     private String bankId;
@@ -321,6 +324,27 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalStateException("Giao dịch này đã được duyệt thành công trước đó.");
         }
 
+        // Special handling for WITHDRAWAL approval
+        if (orderCode.startsWith("WDR") || "WITHDRAWAL".equalsIgnoreCase(transaction.getType())) {
+            String withdrawalPrefix = orderCode.substring(3).toLowerCase();
+            withdrawalRepository.findAll().stream()
+                    .filter(w -> w.getId().toString().replace("-", "").toLowerCase().startsWith(withdrawalPrefix))
+                    .findFirst()
+                    .ifPresent(w -> {
+                        w.setStatus(Withdrawal.Status.APPROVED);
+                        w.setProcessedAt(LocalDateTime.now());
+                        w.setAdminNote(String.format("Duyệt chuyển tiền bởi admin %s", adminUser.getEmail()));
+                        withdrawalRepository.save(w);
+                    });
+
+            transaction.setStatus(Transaction.Status.SUCCESS);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transaction.setGatewayPayload(String.format("{\"manualApproval\": true, \"admin\": \"%s\", \"approvedAt\": \"%s\"}",
+                    adminUser.getEmail(), LocalDateTime.now()));
+            transactionRepository.save(transaction);
+            return true;
+        }
+
         long amountToApprove = transaction.getActualAmount() != null && transaction.getActualAmount() > 0
                 ? transaction.getActualAmount()
                 : transaction.getAmount();
@@ -338,7 +362,47 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy giao dịch: " + orderCode));
 
         if (transaction.getStatus() == Transaction.Status.SUCCESS) {
-            throw new IllegalStateException("Không thể hủy giao dịch đã nạp tiền thành công.");
+            throw new IllegalStateException("Không thể hủy giao dịch đã hoàn tất thành công.");
+        }
+
+        // Special handling for WITHDRAWAL cancellation / rejection
+        if (orderCode.startsWith("WDR") || "WITHDRAWAL".equalsIgnoreCase(transaction.getType())) {
+            String withdrawalPrefix = orderCode.substring(3).toLowerCase();
+            withdrawalRepository.findAll().stream()
+                    .filter(w -> w.getStatus() == Withdrawal.Status.PENDING &&
+                            w.getId().toString().replace("-", "").toLowerCase().startsWith(withdrawalPrefix))
+                    .findFirst()
+                    .ifPresent(w -> {
+                        w.setStatus(Withdrawal.Status.REJECTED);
+                        w.setAdminNote("Admin từ chối giao dịch rút tiền");
+                        w.setProcessedAt(LocalDateTime.now());
+                        withdrawalRepository.save(w);
+
+                        // Refund money back to user real balance
+                        userRepository.atomicRefundWithdrawal(w.getUser().getId(), w.getAmount());
+
+                        // Create REFUND transaction log (+money back)
+                        String refundOrderCode = "REF" + w.getId().toString().replace("-", "").substring(0, 12).toUpperCase();
+                        if (transactionRepository.findByOrderCode(refundOrderCode).isEmpty()) {
+                            Transaction refundTx = Transaction.builder()
+                                    .user(w.getUser())
+                                    .orderCode(refundOrderCode)
+                                    .paymentMethod("WALLET")
+                                    .amount(w.getAmount())
+                                    .type("REFUND")
+                                    .status(Transaction.Status.SUCCESS)
+                                    .completedAt(LocalDateTime.now())
+                                    .gatewayPayload(String.format("{\"refundFor\": \"%s\", \"reason\": \"Hủy giao dịch rút tiền từ Quản Lý Giao Dịch\"}", orderCode))
+                                    .build();
+                            transactionRepository.save(refundTx);
+                        }
+                    });
+
+            transaction.setStatus(Transaction.Status.CANCELLED);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transaction.setGatewayPayload("{\"cancelled\": true, \"reason\": \"Admin từ chối yêu cầu rút tiền\", \"time\": \"" + LocalDateTime.now() + "\"}");
+            transactionRepository.save(transaction);
+            return true;
         }
 
         transaction.setStatus(Transaction.Status.CANCELLED);

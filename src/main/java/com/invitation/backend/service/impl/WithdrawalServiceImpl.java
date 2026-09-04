@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -145,17 +146,89 @@ public class WithdrawalServiceImpl implements WithdrawalService {
             throw new IllegalStateException("Yêu cầu rút tiền này đã được xử lý trước đó");
         }
 
+        String note = reason != null && !reason.isBlank() ? reason.trim() : "Từ chối yêu cầu rút tiền";
         withdrawal.setStatus(Withdrawal.Status.REJECTED);
-        withdrawal.setAdminNote(reason != null && !reason.isBlank() ? reason.trim() : "Từ chối yêu cầu rút tiền");
+        withdrawal.setAdminNote(note);
         withdrawal.setProcessedAt(LocalDateTime.now());
         withdrawal = withdrawalRepository.save(withdrawal);
 
-        // Atomically refund locked money back to user's real balance
+        // 1. Atomically refund locked money back to user's real balance
         userRepository.atomicRefundWithdrawal(withdrawal.getUser().getId(), withdrawal.getAmount());
 
-        log.info("Admin {} rejected withdrawal {} of {} VND. Refunded to user {}",
-                adminUser.getEmail(), withdrawalId, withdrawal.getAmount(), withdrawal.getUser().getEmail());
+        // 2. Update related withdrawal transaction to CANCELLED
+        String orderCode = "WDR" + withdrawal.getId().toString().replace("-", "").substring(0, 12).toUpperCase();
+        transactionRepository.findByOrderCode(orderCode)
+                .ifPresent(t -> {
+                    t.setStatus(Transaction.Status.CANCELLED);
+                    t.setCompletedAt(LocalDateTime.now());
+                    t.setGatewayPayload(String.format("{\"cancelled\": true, \"reason\": \"%s\", \"rejectedBy\": \"%s\"}",
+                            note.replace("\"", "\\\""), adminUser.getEmail()));
+                    transactionRepository.save(t);
+                });
+
+        // 3. Create a REFUND transaction log (+money back to customer account)
+        String refundOrderCode = "REF" + withdrawal.getId().toString().replace("-", "").substring(0, 12).toUpperCase();
+        if (transactionRepository.findByOrderCode(refundOrderCode).isEmpty()) {
+            Transaction refundTx = Transaction.builder()
+                    .user(withdrawal.getUser())
+                    .orderCode(refundOrderCode)
+                    .paymentMethod("WALLET")
+                    .amount(withdrawal.getAmount())
+                    .type("REFUND")
+                    .status(Transaction.Status.SUCCESS)
+                    .completedAt(LocalDateTime.now())
+                    .gatewayPayload(String.format("{\"refundFor\": \"%s\", \"reason\": \"%s\", \"admin\": \"%s\"}",
+                            orderCode,
+                            note.replace("\"", "\\\""),
+                            adminUser.getEmail()))
+                    .build();
+            transactionRepository.save(refundTx);
+        }
+
+        log.info("Admin {} rejected withdrawal {} of {} VND. Refunded to user {} and created REFUND transaction {}",
+                adminUser.getEmail(), withdrawalId, withdrawal.getAmount(), withdrawal.getUser().getEmail(), refundOrderCode);
 
         return WithdrawalDto.fromEntity(withdrawal);
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void syncHistoricalRejectedWithdrawals() {
+        try {
+            List<Withdrawal> rejectedList = withdrawalRepository.findAll().stream()
+                    .filter(w -> w.getStatus() == Withdrawal.Status.REJECTED)
+                    .toList();
+
+            for (Withdrawal w : rejectedList) {
+                String orderCode = "WDR" + w.getId().toString().replace("-", "").substring(0, 12).toUpperCase();
+                transactionRepository.findByOrderCode(orderCode).ifPresent(t -> {
+                    if (t.getStatus() == Transaction.Status.PENDING) {
+                        t.setStatus(Transaction.Status.CANCELLED);
+                        t.setCompletedAt(w.getProcessedAt() != null ? w.getProcessedAt() : LocalDateTime.now());
+                        transactionRepository.save(t);
+                        log.info("Synced historical withdrawal transaction {} to CANCELLED", orderCode);
+                    }
+                });
+
+                String refundCode = "REF" + w.getId().toString().replace("-", "").substring(0, 12).toUpperCase();
+                if (transactionRepository.findByOrderCode(refundCode).isEmpty()) {
+                    Transaction refundTx = Transaction.builder()
+                            .user(w.getUser())
+                            .orderCode(refundCode)
+                            .paymentMethod("WALLET")
+                            .amount(w.getAmount())
+                            .type("REFUND")
+                            .status(Transaction.Status.SUCCESS)
+                            .completedAt(w.getProcessedAt() != null ? w.getProcessedAt() : LocalDateTime.now())
+                            .gatewayPayload(String.format("{\"refundFor\": \"%s\", \"reason\": \"%s\"}",
+                                    orderCode,
+                                    (w.getAdminNote() != null ? w.getAdminNote() : "Hoàn tiền do yêu cầu rút tiền bị từ chối").replace("\"", "\\\"")))
+                            .build();
+                    transactionRepository.save(refundTx);
+                    log.info("Created missing historical REFUND transaction {} for withdrawal {}", refundCode, w.getId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error syncing historical rejected withdrawals: {}", e.getMessage());
+        }
     }
 }
