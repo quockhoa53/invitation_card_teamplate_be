@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,6 +60,21 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
         return mapToResponse(key);
     }
 
+    private List<String> sanitizeLabels(String primaryLabel, List<String> labels) {
+        List<String> result = new ArrayList<>();
+        if (primaryLabel != null && !primaryLabel.trim().isEmpty()) {
+            result.add(primaryLabel.trim());
+        }
+        if (labels != null) {
+            for (String l : labels) {
+                if (l != null && !l.trim().isEmpty() && result.stream().noneMatch(x -> x.equalsIgnoreCase(l.trim()))) {
+                    result.add(l.trim());
+                }
+            }
+        }
+        return result;
+    }
+
     @Override
     @Transactional
     public TemplateSchemaKeyResponse createSchemaKey(TemplateSchemaKeyRequest request) {
@@ -67,9 +83,13 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
             throw new IllegalArgumentException("Mã Key '" + keyName + "' đã tồn tại trong hệ thống");
         }
 
+        String label = request.getLabel().trim();
+        List<String> labels = sanitizeLabels(label, request.getLabels());
+
         TemplateSchemaKey key = TemplateSchemaKey.builder()
                 .keyName(keyName)
-                .label(request.getLabel().trim())
+                .label(label)
+                .labels(labels)
                 .fieldType(request.getFieldType().trim())
                 .sectionName(request.getSectionName().trim())
                 .placeholder(request.getPlaceholder())
@@ -94,8 +114,12 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
             throw new IllegalArgumentException("Mã Key '" + keyName + "' đã được dùng bởi mục khác");
         }
 
+        String label = request.getLabel().trim();
+        List<String> labels = sanitizeLabels(label, request.getLabels());
+
         key.setKeyName(keyName);
-        key.setLabel(request.getLabel().trim());
+        key.setLabel(label);
+        key.setLabels(labels);
         key.setFieldType(request.getFieldType().trim());
         key.setSectionName(request.getSectionName().trim());
         key.setPlaceholder(request.getPlaceholder());
@@ -131,70 +155,83 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
     public List<TemplateSchemaKeyResponse> seedDefaultSchemaKeys() {
         List<TemplateSchemaKey> defaults = new ArrayList<>();
 
-        // Nội Dung Lời Chúc
-        defaults.add(createKey("recipientName", "Tên Người Nhận", "text", "Nội Dung Lời Chúc", "Ví dụ: Em Yêu, Bạn Thân...", 1));
-        defaults.add(createKey("senderName", "Tên Người Gửi", "text", "Nội Dung Lời Chúc", "Ví dụ: Anh Yêu, Bạn Khoa...", 2));
-        defaults.add(createKey("greetingTitle", "Tiêu Đề Lời Chúc", "text", "Nội Dung Lời Chúc", "Ví dụ: Chúc Mừng Sinh Nhật! 🎉", 3));
-        defaults.add(createKey("greetingMessage", "Nội Dung Lời Chúc", "textarea", "Nội Dung Lời Chúc", "Nội dung lời nhắn chúc mừng...", 4));
+        // 1. Nội Dung Lời Chúc
+        defaults.add(createKeyWithLabels("recipientName", "Tên Người Nhận", Arrays.asList("Tên Người Nhận", "Tên Cô Dâu", "Tên Bạn Gái", "Tên Bạn Thân", "Tên Người Thương"), "text", "Nội Dung Lời Chúc", "Ví dụ: Em Yêu, Bạn Thân...", 1));
+        defaults.add(createKeyWithLabels("senderName", "Tên Người Gửi", Arrays.asList("Tên Người Gửi", "Tên Chú Rể", "Tên Bạn Trai", "Tên Người Thương", "Tên Tác Giả"), "text", "Nội Dung Lời Chúc", "Ví dụ: Anh Yêu, Bạn Khoa...", 2));
+        defaults.add(createKeyWithLabels("greetingTitle", "Tiêu Đề Lời Chúc", Arrays.asList("Tiêu Đề Lời Chúc", "Tiêu Đề Thiệp Mời", "Thông Điệp Chính", "Dòng Tít Nổi Bật"), "text", "Nội Dung Lời Chúc", "Ví dụ: Chúc Mừng Sinh Nhật! 🎉", 3));
+        defaults.add(createKeyWithLabels("greetingMessage", "Nội Dung Lời Chúc", Arrays.asList("Nội Dung Lời Chúc", "Lời Nhắn Yêu Thương", "Tâm Thư Gửi Bạn", "Lời Chúc Mừng"), "textarea", "Nội Dung Lời Chúc", "Nội dung lời nhắn chúc mừng...", 4));
 
-        // Thời Gian & Địa Điểm
-        defaults.add(createKey("eventDate", "Ngày Diễn Ra Sự Kiện", "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 5));
-        defaults.add(createKey("eventTime", "Giờ Diễn Ra", "text", "Thời Gian & Địa Điểm", "18:30", 6));
-        defaults.add(createKey("eventLocation", "Địa Điểm Tổ Chức", "text", "Thời Gian & Địa Điểm", "Trung Tâm Sự Kiện White Palace", 7));
-        defaults.add(createKey("eventMapUrl", "Link Bản Đồ Google Maps", "text", "Thời Gian & Địa Điểm", "https://maps.google.com/...", 8));
-        defaults.add(createKey("loveStartDate", "Ngày Bắt Đầu Tình Yêu", "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 9));
+        // 2. Thời Gian & Địa Điểm
+        defaults.add(createKeyWithLabels("eventDate", "Ngày Diễn Ra Sự Kiện", Arrays.asList("Ngày Diễn Ra Sự Kiện", "Ngày Cưới", "Ngày Sinh Nhật", "Thời Gian Tổ Chức"), "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 5));
+        defaults.add(createKeyWithLabels("eventTime", "Giờ Diễn Ra", Arrays.asList("Giờ Diễn Ra", "Thời Gian Bắt Đầu", "Khung Giờ Khai Tiệc"), "text", "Thời Gian & Địa Điểm", "18:30", 6));
+        defaults.add(createKeyWithLabels("eventLocation", "Địa Điểm Tổ Chức", Arrays.asList("Địa Điểm Tổ Chức", "Nơi Diễn Ra Sự Kiện", "Trung Tâm Tiệc Cưới", "Địa Chỉ"), "text", "Thời Gian & Địa Điểm", "Trung Tâm Sự Kiện White Palace", 7));
+        defaults.add(createKeyWithLabels("eventMapUrl", "Link Bản Đồ Google Maps", Arrays.asList("Link Bản Đồ Google Maps", "Bản Đồ Chỉ Đường", "Tọa Độ Google Maps"), "text", "Thời Gian & Địa Điểm", "https://maps.google.com/...", 8));
+        defaults.add(createKeyWithLabels("loveStartDate", "Ngày Bắt Đầu Tình Yêu", Arrays.asList("Ngày Bắt Đầu Tình Yêu", "Ngày Kỷ Niệm", "Ngày Đầu Tiên Quen Nhau", "Ngày Bắt Đầu Hẹn Hò"), "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 9));
 
-        // Hình Ảnh & Đại Diện
-        defaults.add(createKey("senderAvatar", "Ảnh Đại Diện", "image", "Hình Ảnh", "https://...", 10));
-        defaults.add(createKey("senderNickname", "Biệt Danh / Nickname", "text", "Hình Ảnh", "Bé Bự, Mèo Con...", 11));
+        // 3. Hình Ảnh & Đại Diện
+        defaults.add(createKeyWithLabels("senderAvatar", "Ảnh Đại Diện Người Gửi", Arrays.asList("Ảnh Đại Diện Người Gửi", "Ảnh Chú Rể", "Ảnh Bạn Trai", "Ảnh Đại Diện"), "image", "Hình Ảnh", "https://...", 10));
+        defaults.add(createKeyWithLabels("recipientAvatar", "Ảnh Đại Diện Người Nhận", Arrays.asList("Ảnh Đại Diện Người Nhận", "Ảnh Cô Dâu", "Ảnh Bạn Gái", "Ảnh Nhân Vật Chính"), "image", "Hình Ảnh", "https://...", 11));
+        defaults.add(createKeyWithLabels("senderNickname", "Biệt Danh Người Gửi", Arrays.asList("Biệt Danh Người Gửi", "Nickname", "Tên Thân Mật"), "text", "Hình Ảnh", "Bé Bự, Mèo Con...", 12));
 
-        // Album Ảnh
-        defaults.add(createKey("photos", "Album Ảnh Kỷ Niệm", "gallery", "Album Ảnh Kỷ Niệm", "Danh sách ảnh kỷ niệm", 12));
+        // 4. Địa Điểm Cặp Đôi & Bản Đồ
+        defaults.add(createKeyWithLabels("senderLocation", "Vị Trí Người Gửi", Arrays.asList("Vị Trí Người Gửi", "Nơi Ở Người Gửi", "Thành Phố Người Gửi"), "text", "Bản Đồ & Khoảng Cách", "Hà Nội (21.0285° N)", 13));
+        defaults.add(createKeyWithLabels("recipientLocation", "Vị Trí Người Nhận", Arrays.asList("Vị Trí Người Nhận", "Nơi Ở Người Nhận", "Thành Phố Người Nhận"), "text", "Bản Đồ & Khoảng Cách", "TP. Hồ Chí Minh (10.8231° N)", 14));
+        defaults.add(createKeyWithLabels("distanceKm", "Khoảng Cách (km)", Arrays.asList("Khoảng Cách (km)", "Cự Ly Địa Lý", "Khoảng Cách Hai Trái Tim"), "number", "Bản Đồ & Khoảng Cách", "1720", 15));
+        defaults.add(createKeyWithLabels("coordinates", "Tọa Độ Địa Lý", Arrays.asList("Tọa Độ Địa Lý", "Tọa Độ GPS"), "text", "Bản Đồ & Khoảng Cách", "10.7769° N, 106.7009° E", 16));
 
-        // Nhạc Nền
-        defaults.add(createKey("musicUrl", "Nhạc Nền Thiệp Mời", "music", "Nhạc Nền Thiệp Mời", "Link bài hát mp3", 13));
+        // 5. Album Ảnh & Kỷ Niệm
+        defaults.add(createKeyWithLabels("photos", "Album Ảnh Kỷ Niệm", Arrays.asList("Album Ảnh Kỷ Niệm", "Ảnh Tái Ngộ", "Bộ Sưu Tập Khoảnh Khắc"), "gallery", "Album Ảnh Kỷ Niệm", "Danh sách ảnh kỷ niệm", 17));
 
-        // Bản Đồ & Khoảng Cách
-        defaults.add(createKey("distanceKm", "Khoảng Cách (km)", "number", "Bản Đồ & Khoảng Cách", "1500", 14));
-        defaults.add(createKey("coordinates", "Tọa Độ Địa Lý", "text", "Bản Đồ & Khoảng Cách", "10.7769° N, 106.7009° E", 15));
+        // 6. Nhạc Nền
+        defaults.add(createKeyWithLabels("musicUrl", "Nhạc Nền Thiệp Mời", Arrays.asList("Nhạc Nền Thiệp Mời", "Giai Điệu Tình Yêu", "Bài Hát Kỷ Niệm"), "music", "Nhạc Nền Thiệp Mời", "Link bài hát mp3", 18));
 
-        // Hiệu Ứng Từ Khóa Rơi
-        defaults.add(createKey("keyword1", "Từ Khóa Rơi 1", "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Hạnh Phúc", 16));
-        defaults.add(createKey("keyword2", "Từ Khóa Rơi 2", "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Yêu Thương", 17));
-        defaults.add(createKey("keyword3", "Từ Khóa Rơi 3", "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Bình Yên", 18));
-        defaults.add(createKey("keyword4", "Từ Khóa Rơi 4", "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Mãi Mãi", 19));
-        defaults.add(createKey("fallingKeywords", "Danh Sách Từ Khóa Rơi", "keywords", "Hiệu Ứng Từ Khóa Rơi", "Danh sách từ khóa", 20));
+        // 7. Hiệu Ứng Từ Khóa Rơi & Mốc Thời Gian
+        defaults.add(createKeyWithLabels("keyword1", "Từ Khóa Rơi 1", Arrays.asList("Từ Khóa Rơi 1", "Từ Khóa Bay 1"), "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Hạnh Phúc", 19));
+        defaults.add(createKeyWithLabels("keyword2", "Từ Khóa Rơi 2", Arrays.asList("Từ Khóa Rơi 2", "Từ Khóa Bay 2"), "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Yêu Thương", 20));
+        defaults.add(createKeyWithLabels("keyword3", "Từ Khóa Rơi 3", Arrays.asList("Từ Khóa Rơi 3", "Từ Khóa Bay 3"), "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Bình Yên", 21));
+        defaults.add(createKeyWithLabels("keyword4", "Từ Khóa Rơi 4", Arrays.asList("Từ Khóa Rơi 4", "Từ Khóa Bay 4"), "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Mãi Mãi", 22));
+        defaults.add(createKeyWithLabels("keyword5", "Từ Khóa Rơi 5", Arrays.asList("Từ Khóa Rơi 5", "Từ Khóa Bay 5"), "text", "Hiệu Ứng Từ Khóa Rơi", "Ví dụ: Trọn Vẹn", 23));
+        defaults.add(createKeyWithLabels("fallingKeywords", "Danh Sách Từ Khóa Rơi", Arrays.asList("Danh Sách Từ Khóa Rơi", "Mưa Chữ Neon", "Từ Khóa Tình Yêu"), "keywords", "Hiệu Ứng Từ Khóa Rơi", "Danh sách từ khóa", 24));
+        defaults.add(createKeyWithLabels("milestoneUnit", "Đơn Vị Mốc Thời Gian", Arrays.asList("Đơn Vị Mốc Thời Gian", "Đơn Vị Đếm (DAYS, YEARS, NGÀY)"), "text", "Hiệu Ứng Từ Khóa Rơi", "NGÀY, THÁNG, NĂM", 25));
+        defaults.add(createKeyWithLabels("milestoneText", "Dòng Chữ Mốc Kỷ Niệm", Arrays.asList("Dòng Chữ Mốc Kỷ Niệm", "Nội Dung Huy Hiệu Kỷ Niệm"), "text", "Hiệu Ứng Từ Khóa Rơi", "BÊN NHAU, YÊU NHAU", 26));
 
-        // Ngày Sinh Nhật & Đếm Ngược
-        defaults.add(createKey("birthdayDate", "Ngày Sinh Nhật (Tự Tính Đếm Ngược)", "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 21));
+        // 8. Ngày Sinh Nhật & Đếm Ngược
+        defaults.add(createKeyWithLabels("birthdayDate", "Ngày Sinh Nhật", Arrays.asList("Ngày Sinh Nhật", "Ngày Sinh (Tự Tính Đếm Ngược)"), "date", "Thời Gian & Địa Điểm", "YYYY-MM-DD", 27));
 
-        // 5 Khoảnh Khắc Kỷ Niệm (Scrapbook KK1 -> KK5)
-        defaults.add(createKey("moment1Photo", "Ảnh Khoảnh Khắc 1", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 22));
-        defaults.add(createKey("moment1Text", "Nội Dung Khoảnh Khắc 1", "text", "5 Khoảnh Khắc Kỷ Niệm", "Ngày đầu tiên nắm tay nhau", 23));
-        defaults.add(createKey("moment1Date", "Ngày Khoảnh Khắc 1", "text", "5 Khoảnh Khắc Kỷ Niệm", "14.02.2023", 24));
+        // 9. 5 Khoảnh Khắc Kỷ Niệm (Scrapbook KK1 -> KK5)
+        defaults.add(createKeyWithLabels("moment1Photo", "Ảnh Khoảnh Khắc 1", List.of("Ảnh Khoảnh Khắc 1"), "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 28));
+        defaults.add(createKeyWithLabels("moment1Text", "Nội Dung Khoảnh Khắc 1", List.of("Nội Dung Khoảnh Khắc 1"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Ngày đầu tiên nắm tay nhau", 29));
+        defaults.add(createKeyWithLabels("moment1Date", "Ngày Khoảnh Khắc 1", List.of("Ngày Khoảnh Khắc 1"), "text", "5 Khoảnh Khắc Kỷ Niệm", "14.02.2023", 30));
 
-        defaults.add(createKey("moment2Photo", "Ảnh Khoảnh Khắc 2", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 25));
-        defaults.add(createKey("moment2Text", "Nội Dung Khoảnh Khắc 2", "text", "5 Khoảnh Khắc Kỷ Niệm", "Chuyến đi Đà Lạt đầu tiên", 26));
-        defaults.add(createKey("moment2Date", "Ngày Khoảnh Khắc 2", "text", "5 Khoảnh Khắc Kỷ Niệm", "08.05.2023", 27));
+        defaults.add(createKeyWithLabels("moment2Photo", "Ảnh Khoảnh Khắc 2", List.of("Ảnh Khoảnh Khắc 2"), "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 31));
+        defaults.add(createKeyWithLabels("moment2Text", "Nội Dung Khoảnh Khắc 2", List.of("Nội Dung Khoảnh Khắc 2"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Chuyến đi Đà Lạt đầu tiên", 32));
+        defaults.add(createKeyWithLabels("moment2Date", "Ngày Khoảnh Khắc 2", List.of("Ngày Khoảnh Khắc 2"), "text", "5 Khoảnh Khắc Kỷ Niệm", "08.05.2023", 33));
 
-        defaults.add(createKey("moment3Photo", "Ảnh Khoảnh Khắc 3", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 28));
-        defaults.add(createKey("moment3Text", "Nội Dung Khoảnh Khắc 3", "text", "5 Khoảnh Khắc Kỷ Niệm", "Sinh nhật năm ngoái", 29));
-        defaults.add(createKey("moment3Date", "Ngày Khoảnh Khắc 3", "text", "5 Khoảnh Khắc Kỷ Niệm", "20.10.2023", 30));
+        defaults.add(createKeyWithLabels("moment3Photo", "Ảnh Khoảnh Khắc 3", List.of("Ảnh Khoảnh Khắc 3"), "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 34));
+        defaults.add(createKeyWithLabels("moment3Text", "Nội Dung Khoảnh Khắc 3", List.of("Nội Dung Khoảnh Khắc 3"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Sinh nhật năm ngoái", 35));
+        defaults.add(createKeyWithLabels("moment3Date", "Ngày Khoảnh Khắc 3", List.of("Ngày Khoảnh Khắc 3"), "text", "5 Khoảnh Khắc Kỷ Niệm", "20.10.2023", 36));
 
-        defaults.add(createKey("moment4Photo", "Ảnh Khoảnh Khắc 4", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 31));
-        defaults.add(createKey("moment4Text", "Nội Dung Khoảnh Khắc 4", "text", "5 Khoảnh Khắc Kỷ Niệm", "Đón năm mới cùng nhau", 32));
-        defaults.add(createKey("moment4Date", "Ngày Khoảnh Khắc 4", "text", "5 Khoảnh Khắc Kỷ Niệm", "01.01.2026", 33));
+        defaults.add(createKeyWithLabels("moment4Photo", "Ảnh Khoảnh Khắc 4", List.of("Ảnh Khoảnh Khắc 4"), "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 37));
+        defaults.add(createKeyWithLabels("moment4Text", "Nội Dung Khoảnh Khắc 4", List.of("Nội Dung Khoảnh Khắc 4"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Đón năm mới cùng nhau", 38));
+        defaults.add(createKeyWithLabels("moment4Date", "Ngày Khoảnh Khắc 4", List.of("Ngày Khoảnh Khắc 4"), "text", "5 Khoảnh Khắc Kỷ Niệm", "01.01.2026", 39));
 
-        defaults.add(createKey("moment5Photo", "Ảnh Khoảnh Khắc 5", "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 34));
-        defaults.add(createKey("moment5Text", "Nội Dung Khoảnh Khắc 5", "text", "5 Khoảnh Khắc Kỷ Niệm", "Hành trình dài phía trước", 35));
-        defaults.add(createKey("moment5Date", "Ngày Khoảnh Khắc 5", "text", "5 Khoảnh Khắc Kỷ Niệm", "Mãi Mãi Về Sau", 36));
+        defaults.add(createKeyWithLabels("moment5Photo", "Ảnh Khoảnh Khắc 5", List.of("Ảnh Khoảnh Khắc 5"), "image", "5 Khoảnh Khắc Kỷ Niệm", "https://...", 40));
+        defaults.add(createKeyWithLabels("moment5Text", "Nội Dung Khoảnh Khắc 5", List.of("Nội Dung Khoảnh Khắc 5"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Hành trình dài phía trước", 41));
+        defaults.add(createKeyWithLabels("moment5Date", "Ngày Khoảnh Khắc 5", List.of("Ngày Khoảnh Khắc 5"), "text", "5 Khoảnh Khắc Kỷ Niệm", "Mãi Mãi Về Sau", 42));
 
-        // Thư Tay Khi Nhấn Mở Thư
-        defaults.add(createKey("letterMessage", "Nội Dung Thư Tay Khi Mở", "textarea", "Thư Chúc Mừng", "Gửi người thương...", 37));
-        defaults.add(createKey("footerNote", "Dòng Chữ Dưới Chân Trang", "text", "Thông Tin Khác", "made with love, mỗi ngày bên em", 38));
+        // 10. Thư Tay Khi Nhấn Mở Thư
+        defaults.add(createKeyWithLabels("letterMessage", "Nội Dung Thư Tay Khi Mở", Arrays.asList("Nội Dung Thư Tay Khi Mở", "Bức Thư Tình", "Lời Nhắn Bí Mật"), "textarea", "Thư Chúc Mừng", "Gửi người thương...", 43));
+        defaults.add(createKeyWithLabels("footerNote", "Dòng Chữ Dưới Chân Trang", Arrays.asList("Dòng Chữ Dưới Chân Trang", "Lời Kết", "Chữ Ký Chân Trang"), "text", "Thông Tin Khác", "made with love, mỗi ngày bên em", 44));
 
         for (TemplateSchemaKey item : defaults) {
-            if (!repository.existsByKeyName(item.getKeyName())) {
+            Optional<TemplateSchemaKey> existingOpt = repository.findByKeyName(item.getKeyName());
+            if (existingOpt.isPresent()) {
+                TemplateSchemaKey existing = existingOpt.get();
+                if (existing.getLabels() == null || existing.getLabels().isEmpty()) {
+                    existing.setLabels(item.getLabels());
+                    repository.save(existing);
+                }
+            } else {
                 repository.save(item);
             }
         }
@@ -218,12 +255,15 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
             if (req.getKeyName() == null || req.getKeyName().trim().isEmpty()) {
                 continue;
             }
+
             String keyName = req.getKeyName().trim();
             Optional<TemplateSchemaKey> existingOpt = repository.findByKeyName(keyName);
 
             String label = req.getLabel() != null && !req.getLabel().trim().isEmpty()
                     ? req.getLabel().trim()
                     : keyName;
+            List<String> labels = sanitizeLabels(label, req.getLabels());
+
             String fieldType = req.getFieldType() != null && !req.getFieldType().trim().isEmpty()
                     ? req.getFieldType().trim()
                     : "text";
@@ -235,6 +275,7 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
                 if (overwrite) {
                     TemplateSchemaKey existing = existingOpt.get();
                     existing.setLabel(label);
+                    existing.setLabels(labels);
                     existing.setFieldType(fieldType);
                     existing.setSectionName(sectionName);
                     if (req.getPlaceholder() != null) existing.setPlaceholder(req.getPlaceholder());
@@ -252,6 +293,7 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
                 TemplateSchemaKey newKey = TemplateSchemaKey.builder()
                         .keyName(keyName)
                         .label(label)
+                        .labels(labels)
                         .fieldType(fieldType)
                         .sectionName(sectionName)
                         .placeholder(req.getPlaceholder())
@@ -276,10 +318,11 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
                 .build();
     }
 
-    private TemplateSchemaKey createKey(String keyName, String label, String fieldType, String sectionName, String placeholder, int order) {
+    private TemplateSchemaKey createKeyWithLabels(String keyName, String label, List<String> labels, String fieldType, String sectionName, String placeholder, int order) {
         return TemplateSchemaKey.builder()
                 .keyName(keyName)
                 .label(label)
+                .labels(new ArrayList<>(labels))
                 .fieldType(fieldType)
                 .sectionName(sectionName)
                 .placeholder(placeholder)
@@ -295,6 +338,9 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
                 .id(entity.getId())
                 .keyName(entity.getKeyName())
                 .label(entity.getLabel())
+                .labels(entity.getLabels() != null && !entity.getLabels().isEmpty()
+                        ? new ArrayList<>(entity.getLabels())
+                        : new ArrayList<>(List.of(entity.getLabel())))
                 .fieldType(entity.getFieldType())
                 .sectionName(entity.getSectionName())
                 .placeholder(entity.getPlaceholder())

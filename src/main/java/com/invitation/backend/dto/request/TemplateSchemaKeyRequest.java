@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,6 +24,8 @@ public class TemplateSchemaKeyRequest {
     @NotBlank(message = "Nhãn hiển thị không được để trống")
     @Size(max = 150, message = "Nhãn tối đa 150 ký tự")
     private String label;
+
+    private List<String> labels;
 
     @NotBlank(message = "Kiểu dữ liệu không được để trống")
     private String fieldType;

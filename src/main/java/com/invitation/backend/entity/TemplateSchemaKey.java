@@ -1,11 +1,14 @@
 package com.invitation.backend.entity;
 
+import com.invitation.backend.converter.StringListConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -26,6 +29,11 @@ public class TemplateSchemaKey {
 
     @Column(nullable = false, length = 150)
     private String label;
+
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "labels", columnDefinition = "TEXT")
+    @Builder.Default
+    private List<String> labels = new ArrayList<>();
 
     @Column(name = "field_type", nullable = false, length = 50)
     private String fieldType; // text, textarea, date, datetime, number, image, gallery, music, keywords, color, select

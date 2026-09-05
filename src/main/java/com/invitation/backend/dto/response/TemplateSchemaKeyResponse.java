@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -16,6 +17,7 @@ public class TemplateSchemaKeyResponse {
     private UUID id;
     private String keyName;
     private String label;
+    private List<String> labels;
     private String fieldType;
     private String sectionName;
     private String placeholder;
