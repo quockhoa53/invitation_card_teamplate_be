@@ -30,10 +30,8 @@ public class TemplateSchemaKeyServiceImpl implements TemplateSchemaKeyService {
     @PostConstruct
     public void init() {
         try {
-            if (repository.count() == 0) {
-                log.info("Khởi tạo danh sách Template Schema Keys chuẩn mặc định...");
-                seedDefaultSchemaKeys();
-            }
+            log.info("Đồng bộ Template Schema Keys chuẩn hệ thống...");
+            seedDefaultSchemaKeys();
         } catch (Exception e) {
             log.warn("Không thể tự động seed schema keys (bảng có thể chưa tạo): {}", e.getMessage());
         }
